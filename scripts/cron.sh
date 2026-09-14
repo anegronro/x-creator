@@ -50,9 +50,11 @@ case "${1:-}" in
     exit $codigo
     ;;
   redactar)
-    # Un post propio al día, sobre el tema con más tensión.
-    salida=$("$XC" redactar --auto --n 2 2>&1); codigo=$?
-    registrar "redactar: $(echo "$salida" | tail -4)"
+    # Tres empresas DISTINTAS al día, una por post, cada una con su ángulo.
+    # La `n` de --auto son tickers, no variantes: subirla amplía el reparto,
+    # no repite la misma empresa.
+    salida=$("$XC" redactar --auto --n 3 2>&1); codigo=$?
+    registrar "redactar: $(echo "$salida" | tail -6)"
     exit $codigo
     ;;
   macro)
