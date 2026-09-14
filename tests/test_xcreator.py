@@ -1828,3 +1828,43 @@ def test_el_intent_usa_el_texto_EDITADO(tmp_path):
     q.aprobar(i.id, texto_editado="mi versión")
     assert "mi%20versi" in intent_respuesta(q.get(i.id).texto_final,
                                             q.get(i.id).url_origen)
+
+
+# --- el score es interno: no se publica -----------------------------------
+
+def test_el_score_no_esta_entre_las_cifras_publicables():
+    """El lector no puede ver el scorecard ni conoce la escala: citarlo es
+    pedirle que se fíe, y gasta caracteres que podrían llevar un dato
+    comprobable."""
+    from xcreator.brief import from_prediction
+
+    b = from_prediction(_PRED)   # _PRED trae score10 = 7.8
+    assert not any("score" in f.label.lower() for f in b.facts)
+    assert 7.8 not in b.allowed_numbers()
+
+
+def test_citar_el_score_se_detecta_como_cifra_sin_fuente():
+    from xcreator.brief import from_prediction
+    from xcreator.generate import validate_numbers
+
+    b = from_prediction(_PRED)
+    malos = validate_numbers("$NVDA scores 7.8/10 on our model.",
+                             b.allowed_numbers())
+    assert malos, "un score publicado debe saltar como cifra sin fuente"
+
+
+def test_la_calidad_sigue_como_contexto_para_calibrar_el_tono():
+    """El redactor necesita saber si el negocio es bueno; lo que no puede es
+    citar el número."""
+    from xcreator.brief import from_prediction
+
+    b = from_prediction(_PRED)
+    assert any("NO menciones el score" in c for c in b.context)
+
+
+def test_lo_verificable_si_se_publica():
+    """P/E, precios y supuestos los puede comprobar cualquiera."""
+    from xcreator.brief import from_prediction
+
+    valores = from_prediction(_PRED).allowed_numbers()
+    assert 40.10 in valores and 196.53 in valores and 0.40 in valores

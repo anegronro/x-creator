@@ -112,9 +112,21 @@ def from_prediction(pred: dict, price_now: float | None = None) -> Brief | None:
         Fact("escenario alto (12m)", float(pred["bull"]), "usd",
              f"WBJ targets {pred['date']}"),
     ]
+    # El score NO va en los facts: es una métrica interna que el lector no
+    # puede ver ni verificar. Publicar "8.7/10" es pedirle que se fíe de una
+    # escala que no conoce, y ocupa caracteres que podrían llevar un dato
+    # comprobable. Va como contexto cualitativo, sin cifra: sirve para que el
+    # redactor calibre el tono, no para citarlo.
     if pred.get("score10") is not None:
-        facts.append(Fact("score del modelo", float(pred["score10"]), "score",
-                          f"WBJ scorecard {pred['date']}"))
+        s10 = float(pred["score10"])
+        calidad = ("alta" if s10 >= 7.5 else
+                   "media" if s10 >= 5 else "baja")
+        context_score = (
+            f"Calidad {calidad} según el modelo interno. NO menciones el "
+            f"score ni ninguna puntuación: el lector no puede verla."
+        )
+    else:
+        context_score = ""
     if pred.get("pe_now") is not None:
         facts.append(Fact("P/E al momento del análisis", float(pred["pe_now"]),
                           "ratio", f"WBJ analyze {pred['date']}"))
@@ -137,6 +149,8 @@ def from_prediction(pred: dict, price_now: float | None = None) -> Brief | None:
         "El rango sale de escenarios con supuestos declarados, no de un precio único.",
         "Es una clasificación de research, nunca una instrucción de compra o venta.",
     ]
+    if context_score:
+        context.append(context_score)
 
     if price_now:
         facts.append(Fact("precio hoy", float(price_now), "usd", "FMP quote"))
@@ -157,6 +171,8 @@ def from_prediction(pred: dict, price_now: float | None = None) -> Brief | None:
             "El horizonte del target es 12 meses; aún no está maduro si han"
             " pasado menos.",
         ]
+        if context_score:
+            context.append(context_score)
 
     return Brief(
         kind=kind, ticker=t, angle=angle, facts=facts, context=context,

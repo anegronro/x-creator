@@ -85,6 +85,11 @@ Non-negotiable rules:
 1. NEVER use a number that is not in the brief's allowed list. Not one. If \
 you want to make a point that needs a number you don't have, make a \
 different point.
+1b. NEVER cite an internal score or rating ("scores 8.7/10", "our model \
+rates it 6/10"). The reader cannot see that scorecard, does not know the \
+scale, and cannot verify it — so it reads as self-promotion and burns \
+characters that could carry a checkable fact. Prices, multiples, growth \
+assumptions and scenario ranges ARE verifiable; say those instead.
 2. NEVER tell anyone to buy, sell, or hold. You publish research \
 classifications and ranges with stated assumptions. "The model's range is X" \
 is fine; "load up here" is not.

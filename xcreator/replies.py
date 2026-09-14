@@ -148,6 +148,8 @@ job is to add a fact the original post does not have.
 
 Hard rules:
 1. Use ONLY numbers from the brief. Not one other figure.
+1b. Never cite an internal score or rating: the reader cannot see it or \
+verify it. Use prices, multiples, growth assumptions and ranges.
 2. Never compliment, never agree without adding something, never say "great \
 thread". A reply with no new information is spam, and it is what gets \
 accounts throttled.
