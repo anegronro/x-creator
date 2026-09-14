@@ -2053,3 +2053,41 @@ def test_sin_clave_de_fred_no_hay_macro_pero_no_revienta():
 
     assert fred_series("DGS10", None) == []
     assert mejores_temas(None) == []
+
+
+# --- replies en el móvil: copiar de un toque ------------------------------
+
+def test_el_reply_va_en_bloque_copiable():
+    """Los deep links de X abren la app sin prellenar el texto en muchos
+    teléfonos. Un bloque de código sí lleva botón de copiar nativo."""
+    from types import SimpleNamespace
+
+    from xcreator.telegram import mensaje_para_copiar
+
+    i = SimpleNamespace(responde_a="@Barchart", texto_final="El texto.",
+                        url_origen="https://x.com/Barchart/status/9")
+    m = mensaje_para_copiar(i)
+    assert "<pre>El texto.</pre>" in m
+    assert "https://x.com/Barchart/status/9" in m
+
+
+def test_el_texto_se_escapa_para_no_romper_el_html():
+    """Un '&' o un '<' sin escapar hacen que Telegram rechace el mensaje
+    entero y el reply no llegue."""
+    from types import SimpleNamespace
+
+    from xcreator.telegram import mensaje_para_copiar
+
+    i = SimpleNamespace(responde_a="@x", url_origen="",
+                        texto_final="P/E < 10 & falling")
+    m = mensaje_para_copiar(i)
+    assert "&lt; 10 &amp; falling" in m
+
+
+def test_se_copia_el_texto_EDITADO(tmp_path):
+    from xcreator.telegram import mensaje_para_copiar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("original", kind="reply"))
+    q.aprobar(i.id, texto_editado="mi versión")
+    assert "<pre>mi versión</pre>" in mensaje_para_copiar(q.get(i.id))

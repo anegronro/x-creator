@@ -65,9 +65,11 @@ class Bot:
         return self._call("getMe")
 
     def send(self, texto: str, *, botones: list | None = None,
-             force_reply: bool = False) -> dict:
+             force_reply: bool = False, html: bool = False) -> dict:
         payload: dict[str, Any] = {"chat_id": self.chat_id, "text": texto,
                                    "disable_web_page_preview": True}
+        if html:
+            payload["parse_mode"] = "HTML"
         if botones:
             payload["reply_markup"] = {"inline_keyboard": botones}
         elif force_reply:
@@ -247,6 +249,30 @@ def _texto_item(item) -> str:
         avisos.append(f"FALTA EL TICKER: {', '.join(item.tickers_faltantes)}")
     if avisos:
         partes += ["", "⚠️ " + " | ".join(avisos)]
+    return "\n".join(partes)
+
+
+def _escapar(texto: str) -> str:
+    """Escapa lo que Telegram interpreta como HTML."""
+    return (texto.replace("&", "&amp;").replace("<", "&lt;")
+            .replace(">", "&gt;"))
+
+
+def mensaje_para_copiar(item) -> str:
+    """El reply en un bloque de código: en móvil se copia de UN toque.
+
+    Los deep links de X abren la app sin prellenar el texto en muchos
+    teléfonos, así que no se puede depender de ellos. Un bloque de código sí
+    lleva botón de copiar nativo en Telegram, en iOS y en Android.
+    """
+    partes = [
+        f"<b>Responder a {_escapar(item.responde_a)}</b>",
+        "",
+        "Toca el bloque para copiar:",
+        f"<pre>{_escapar(item.texto_final)}</pre>",
+    ]
+    if item.url_origen:
+        partes += ["", f"Y abre el post: {_escapar(item.url_origen)}"]
     return "\n".join(partes)
 
 
