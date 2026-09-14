@@ -182,8 +182,9 @@ def _texto_item(item) -> str:
     if len(piezas) > 1:
         cab += f" · hilo de {len(piezas)}"
     partes = [cab, "", cuerpo]
+    partes += ["", "— lo de arriba es lo que se publica; lo de abajo son notas —"]
     if item.approach:
-        partes += ["", f"ángulo: {item.approach}"]
+        partes += [f"ángulo: {item.approach}"]
     if item.reply_hook:
         partes += [f"gancho: {item.reply_hook}"]
     avisos = []
@@ -191,6 +192,8 @@ def _texto_item(item) -> str:
         avisos.append(f"CIFRAS SIN FUENTE: {', '.join(item.numeros_no_justificados)}")
     if getattr(item, "truncado", False):
         avisos.append("TEXTO CORTADO a media frase")
+    if getattr(item, "idioma_incorrecto", False):
+        avisos.append("NO ESTÁ EN INGLÉS")
     if avisos:
         partes += ["", "⚠️ " + " | ".join(avisos)]
     return "\n".join(partes)

@@ -1052,3 +1052,40 @@ def test_toda_puntuacion_trae_su_razon():
         t = evaluar(_brief_con(**cambios))
         if t.puntos > 0:
             assert t.razones, f"{cambios} puntuó sin razón"
+
+
+# --- idioma: el contenido SIEMPRE va en inglés ----------------------------
+
+@pytest.mark.parametrize("texto,ingles", [
+    ("On July 27 we published a 12-month range on $NVDA: bear $194.56.", True),
+    ("$NVDA at 40.10x. Which half breaks first, pricing or volume?", True),
+    ("Score 7.8/10.", True),                      # sin palabras funcionales
+    ("El rango de 12 meses para $NVDA: bajo $194.56, base $275.14.", False),
+    ("Publicamos un rango y el precio esta fuera del rango hoy.", False),
+    ("La tesis está rota.", False),               # tilde
+    ("", True),                                   # nada que juzgar
+])
+def test_verifica_que_el_contenido_este_en_ingles(texto, ingles):
+    from xcreator.generate import es_ingles
+
+    assert es_ingles(texto) is ingles
+
+
+def test_post_en_espanol_no_es_valido():
+    """Que el prompt lo pida en inglés no basta: se verifica."""
+    assert not _draft("El precio está fuera del rango.",
+                      idioma_incorrecto=True).valido
+
+
+def test_reply_en_espanol_no_es_valido():
+    from xcreator.replies import ReplyDraft
+
+    d = ReplyDraft(texto="El bear case está pegado al precio.",
+                   que_aporta="x", autor="@y", idioma_incorrecto=True)
+    assert not d.valido
+
+
+def test_la_cola_persiste_el_flag_de_idioma(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto", idioma_incorrecto=True))
+    assert q.get(i.id).idioma_incorrecto is True

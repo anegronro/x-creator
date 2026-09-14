@@ -124,6 +124,39 @@ class _Variants(BaseModel):
     variants: list[_Variant]
 
 
+# Marcadores inequívocos de cada idioma: palabras funcionales que no se
+# comparten. No es un detector de idiomas de verdad y no hace falta que lo
+# sea — solo tiene que cazar un post que salió en español, que es el único
+# fallo posible aquí.
+_ES = {"que", "del", "los", "las", "una", "uno", "esta", "este", "pero",
+       "porque", "cuando", "donde", "también", "más", "año", "años", "sus",
+       "por", "para", "con", "sin", "sobre", "hasta", "desde", "entre"}
+_EN = {"the", "is", "are", "of", "and", "to", "that", "with", "for", "on",
+       "at", "it", "this", "from", "was", "has", "have", "but", "not", "you"}
+_ACENTOS = set("áéíóúñ¿¡")
+
+
+def _palabras(texto: str) -> list[str]:
+    return re.findall(r"[a-záéíóúñü]+", texto.lower())
+
+
+def es_ingles(texto: str) -> bool:
+    """True si el texto parece inglés. El contenido SIEMPRE va en inglés.
+
+    La cuenta es en inglés por decisión editorial: el revenue share paga por
+    impresiones de usuarios Premium, y ese mercado en inglés es un orden de
+    magnitud mayor. Que el prompt lo pida no basta — se verifica.
+    """
+    palabras = _palabras(texto)
+    if not palabras:
+        return True  # nada que juzgar
+    if _ACENTOS & set(texto.lower()):
+        return False
+    es = sum(1 for p in palabras if p in _ES)
+    en = sum(1 for p in palabras if p in _EN)
+    return en >= es
+
+
 # Cierres legítimos de un post. Un texto que no termina en ninguno de estos
 # casi siempre viene cortado.
 _CIERRES = ".!?\"')]}…"
@@ -165,6 +198,7 @@ class Draft:
     numeros_no_justificados: list[str] = field(default_factory=list)
     exceso_caracteres: int = 0
     truncado: bool = False
+    idioma_incorrecto: bool = False
 
     @property
     def valido(self) -> bool:
@@ -172,6 +206,7 @@ class Draft:
             not self.numeros_no_justificados
             and self.exceso_caracteres == 0
             and not self.truncado
+            and not self.idioma_incorrecto
         )
 
     @property
@@ -398,6 +433,7 @@ def draft_posts(
                 numeros_no_justificados=validate_numbers("\n".join(piezas), allowed),
                 exceso_caracteres=exceso,
                 truncado=respuesta_truncada or _parece_cortado(v.text),
+                idioma_incorrecto=not es_ingles(v.text),
             )
         )
     return drafts

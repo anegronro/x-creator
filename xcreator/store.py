@@ -36,6 +36,7 @@ class Item:
     model: str = ""
     numeros_no_justificados: list[str] = field(default_factory=list)
     truncado: bool = False
+    idioma_incorrecto: bool = False
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -104,6 +105,7 @@ class Queue:
             model=draft.model,
             numeros_no_justificados=list(draft.numeros_no_justificados),
             truncado=getattr(draft, "truncado", False),
+            idioma_incorrecto=getattr(draft, "idioma_incorrecto", False),
             responde_a=getattr(draft, "autor", ""),
             url_origen=getattr(draft, "url", ""),
         )

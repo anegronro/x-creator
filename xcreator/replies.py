@@ -23,7 +23,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from xcreator.brief import Brief
-from xcreator.generate import MAX_CHARS, _parece_cortado, validate_numbers
+from xcreator.generate import (
+    MAX_CHARS, _parece_cortado, es_ingles, validate_numbers,
+)
 
 # Un reply largo rinde peor: se lee en el hilo, no en el timeline.
 MAX_CHARS_REPLY = 240
@@ -143,6 +145,7 @@ class ReplyDraft:
     numeros_no_justificados: list[str] = field(default_factory=list)
     exceso_caracteres: int = 0
     truncado: bool = False
+    idioma_incorrecto: bool = False
     # Cuando el modelo decide que no hay nada que aportar.
     declinado: bool = False
     motivo: str = ""
@@ -160,6 +163,7 @@ class ReplyDraft:
             and not self.numeros_no_justificados
             and self.exceso_caracteres == 0
             and not self.truncado
+            and not self.idioma_incorrecto
         )
 
 
@@ -246,4 +250,5 @@ def draft_reply(
         exceso_caracteres=max(0, len(texto) - MAX_CHARS_REPLY),
         truncado=(getattr(resp, "stop_reason", None) == "max_tokens"
                   or _parece_cortado(texto)),
+        idioma_incorrecto=not es_ingles(texto),
     )
