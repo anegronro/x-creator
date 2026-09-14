@@ -268,20 +268,27 @@ def mensaje_para_copiar(item) -> str:
     partes = [
         f"<b>Responder a {_escapar(item.responde_a)}</b>",
         "",
-        "Toca el bloque para copiar:",
+        "1. Toca el bloque para copiarlo:",
         f"<pre>{_escapar(item.texto_final)}</pre>",
     ]
     if item.url_origen:
-        partes += ["", f"Y abre el post: {_escapar(item.url_origen)}"]
+        partes += [
+            "",
+            f"2. Mantén pulsado este enlace y elige "
+            f"<b>Abrir en Safari</b> (el navegador de Telegram no lleva tu "
+            f"sesión de X):",
+            _escapar(item.url_origen),
+        ]
     return "\n".join(partes)
 
 
 def intent_respuesta(texto: str, url_origen: str) -> str | None:
     """Deep link que abre X con el reply escrito y colgando del post correcto.
 
-    X no deja publicar replies por API desde feb 2026, pero sí abrir su
-    propio compositor prellenado. Deja el trabajo en un toque —"Post"— en vez
-    de copiar, buscar el post y pegar. Es el camino oficial, no un rodeo.
+    OJO: solo sirve en ESCRITORIO. En el móvil, Telegram abre los enlaces en
+    su navegador interno, que no lleva la sesión de X: el intent acaba en una
+    pantalla de login en vez de en el compositor. Por eso este enlace ya no
+    se ofrece como botón — mandaba a Angel a un callejón sin salida.
     """
     if not url_origen:
         return None
@@ -302,15 +309,10 @@ def _botones(item_id: str, item=None) -> list:
         {"text": "🚀 Ya" if programado else "✅ Aprobar",
          "callback_data": f"ok:{item_id}"},
     ]
-    filas = [fila]
-    # Un reply no se puede publicar por API: el botón abre X con el texto ya
-    # puesto, que es lo más cerca del automático que permite la plataforma.
-    if item is not None and getattr(item, "kind", "") == "reply":
-        intent = intent_respuesta(item.texto_final, item.url_origen)
-        if intent:
-            filas.append([{"text": "🚀 Abrir en X con el texto listo",
-                           "url": intent}])
-    return filas
+    # Sin botón de "abrir en X": en el móvil, Telegram lo abre en su
+    # navegador interno, que no tiene la sesión, y acaba en un login. El
+    # camino que sí funciona (copiar el bloque) va en el propio mensaje.
+    return [fila]
 
 
 # --- acciones -------------------------------------------------------------

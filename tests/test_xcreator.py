@@ -1798,24 +1798,30 @@ def test_sin_post_original_no_hay_intent():
     assert intent_respuesta("texto", "https://x.com/user/status/no-numerico") is None
 
 
-def test_el_reply_lleva_boton_para_abrir_en_x(tmp_path):
+def test_no_hay_boton_que_lleve_al_login_de_x(tmp_path):
+    """En el móvil Telegram abre los enlaces en su navegador interno, sin la
+    sesión de X: el botón acababa en una pantalla de login. Un botón que no
+    funciona es peor que ninguno."""
     from xcreator.telegram import _botones
 
     q = Queue(tmp_path / "cola.jsonl")
     i = q.add(_draft("texto", kind="reply"))
     q.update(i.id, url_origen="https://x.com/Barchart/status/12345")
     filas = _botones(i.id, q.get(i.id))
-    assert len(filas) == 2
-    assert filas[1][0]["url"].startswith("https://x.com/intent/post")
+    assert len(filas) == 1
+    assert not any("url" in b for fila in filas for b in fila)
 
 
-def test_un_post_propio_no_lleva_ese_boton(tmp_path):
-    """Los posts propios sí se publican solos: el botón sobraría."""
-    from xcreator.telegram import _botones
+def test_el_mensaje_explica_como_abrir_el_post(tmp_path):
+    """Sin el botón, el camino tiene que estar escrito: el navegador de
+    Telegram no sirve y hay que abrirlo fuera."""
+    from xcreator.telegram import mensaje_para_copiar
 
     q = Queue(tmp_path / "cola.jsonl")
-    i = q.add(_draft("texto"))
-    assert len(_botones(i.id, q.get(i.id))) == 1
+    i = q.add(_draft("texto", kind="reply"))
+    q.update(i.id, responde_a="@x", url_origen="https://x.com/x/status/9")
+    m = mensaje_para_copiar(q.get(i.id))
+    assert "Abrir en Safari" in m and "no lleva tu sesión" in m
 
 
 def test_el_intent_usa_el_texto_EDITADO(tmp_path):
