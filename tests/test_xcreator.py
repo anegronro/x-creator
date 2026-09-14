@@ -2098,3 +2098,29 @@ def test_se_copia_el_texto_EDITADO(tmp_path):
     i = q.add(_draft("original", kind="reply"))
     q.aprobar(i.id, texto_editado="mi versión")
     assert "<pre>mi versión</pre>" in mensaje_para_copiar(q.get(i.id))
+
+
+# --- cupo diario de replies -----------------------------------------------
+
+def test_el_cupo_cuenta_lo_propuesto_no_lo_publicado(tmp_path):
+    """Lo que se quiere limitar es el tiempo de Angel, y mirar un reply
+    cuesta aunque luego lo descarte."""
+    q = Queue(tmp_path / "cola.jsonl")
+    a = q.add(_draft("uno", kind="reply"))
+    b = q.add(_draft("dos", kind="reply"))
+    q.rechazar(b.id, motivo="no me convence")
+    assert q.replies_de_hoy() == 2
+
+
+def test_los_posts_propios_no_gastan_cupo_de_replies(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("post propio"))
+    q.add(_draft("un reply", kind="reply"))
+    assert q.replies_de_hoy() == 1
+
+
+def test_los_replies_de_ayer_no_cuentan(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("de ayer", kind="reply"))
+    q.update(i.id, creado="2020-01-01T10:00:00+00:00")
+    assert q.replies_de_hoy() == 0

@@ -45,6 +45,12 @@ class Settings:
     # Tope de gasto por pasada. Un bucle con un bug no puede vaciar los
     # créditos en una tarde.
     x_presupuesto_pasada: float = 0.50
+    # Replies al día. Cada uno cuesta tres toques manuales (X no deja
+    # publicarlos por API), así que el límite no es el dinero: es el tiempo
+    # de Angel. Pocos y buenos vale más que muchos y tibios.
+    replies_por_dia: int = 3
+    # Y solo a posts recientes: a las tres horas la conversación ya se movió.
+    horas_frescura_reply: float = 3.0
     # Solo UNA máquina puede hablar con Telegram. Dos instancias con el mismo
     # bot se roban los updates (el primero que llega los consume) y cada una
     # busca el borrador en SU cola: aprobar en el teléfono un borrador de la
@@ -121,6 +127,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_handle=get("X_HANDLE"),
         x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
+        replies_por_dia=int(get("REPLIES_POR_DIA") or 3),
+        horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
         telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
         not in ("false", "0", "no"),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),

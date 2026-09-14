@@ -198,6 +198,18 @@ class Queue:
             item_id, estado="publicado", publicado_en=_now(), post_id=post_id,
         )
 
+    def replies_de_hoy(self) -> int:
+        """Cuántos replies se han propuesto hoy (los descartados incluidos).
+
+        Cuenta lo PROPUESTO, no lo publicado: el coste que se quiere limitar
+        es el de mirar cada uno, y eso ocurre aunque luego se descarte.
+        """
+        from datetime import date
+
+        hoy = date.today().isoformat()
+        return sum(1 for i in self.load()
+                   if i.kind == "reply" and (i.creado or "")[:10] == hoy)
+
     def minutos_desde_ultima_publicacion(self) -> float | None:
         """Minutos desde el último post publicado, o None si no hay ninguno."""
         from datetime import datetime, timezone

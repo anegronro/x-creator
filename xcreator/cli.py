@@ -317,6 +317,15 @@ def responder(
         texto = sys.stdin.read()
     mencion = Mencion(autor=autor, texto=texto, url=url)
 
+    # El cupo diario es de TIEMPO de Angel, no de dinero: cada reply cuesta
+    # tres toques manuales porque X no deja publicarlos por API.
+    ya = q.replies_de_hoy()
+    cupo = max(0, s.replies_por_dia - ya)
+    if cupo == 0:
+        typer.echo(f"Cupo de replies agotado ({ya}/{s.replies_por_dia} hoy). "
+                   f"Se siguen leyendo cuentas, pero no se proponen más.")
+        return
+
     briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
                          limit=500)
     nombres = load_company_names(s.reportes_dir)
@@ -430,6 +439,15 @@ def vigilar(
     except (OSError, ValueError):
         ultimos = {}
 
+    # El cupo diario es de TIEMPO de Angel, no de dinero: cada reply cuesta
+    # tres toques manuales porque X no deja publicarlos por API.
+    ya = q.replies_de_hoy()
+    cupo = max(0, s.replies_por_dia - ya)
+    if cupo == 0:
+        typer.echo(f"Cupo de replies agotado ({ya}/{s.replies_por_dia} hoy). "
+                   f"Se siguen leyendo cuentas, pero no se proponen más.")
+        return
+
     briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
                          limit=500)
     nombres = load_company_names(s.reportes_dir)
@@ -450,6 +468,15 @@ def vigilar(
             ultimos[cuenta.normalizado()] = posts[0].post_id
 
         for p in posts:
+            if encolados >= cupo:
+                break
+            # Solo conversaciones vivas: a las pocas horas responder es
+            # hablarle a un hilo que ya nadie mira.
+            from xcreator.publicar import edad_horas
+
+            horas = edad_horas(p.post_id)
+            if horas is not None and horas > s.horas_frescura_reply:
+                continue
             m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
                         post_id=p.post_id)
             rel = encontrar_relevancia(m, briefs, nombres)
@@ -488,7 +515,8 @@ def vigilar(
     s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
     s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))
     typer.echo(f"\n{leidos} posts leídos -> {relevantes} con datos nuestros "
-               f"-> {encolados} encolados. Gasto real: ${cliente.gastado:.3f}")
+               f"-> {encolados} propuestos. Gasto: ${cliente.gastado:.3f}. "
+               f"Cupo de hoy: {ya + encolados}/{s.replies_por_dia}")
 
 
 @app.command("temas")
