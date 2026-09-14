@@ -143,9 +143,11 @@ def redactar(
         typer.secho("Falta WBJ_REPORTES_DIR en API/.env — es de donde salen "
                     "los datos de acciones.", fg="red", err=True)
         raise typer.Exit(1)
+    # Con 178 tickers analizados, un límite de 10 dejaba fuera casi todo: si
+    # se pide un ticker concreto hay que buscar en todos, no en los primeros.
     briefs = load_briefs(
         s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
-        limit=500 if auto else 10,
+        limit=500 if (auto or ticker) else 10,
     )
     if ticker and not auto:
         briefs = [b for b in briefs if b.ticker.upper() == ticker.upper()]
@@ -213,6 +215,10 @@ def redactar(
                         fg="red")
         if encolar:
             item = q.add(d)
+            ruta = _grafico_para(brief, s, item.id)
+            if ruta:
+                q.update(item.id, imagen=str(ruta))
+                typer.echo(f"  gráfico: {ruta.name}")
             typer.echo(f"  -> cola id {item.id}")
         typer.echo("")
 
@@ -556,11 +562,21 @@ def publicar(
                 typer.echo(f"     {p}")
             continue
         if en_seco:
-            typer.secho(f"[seco] {i.id} {i.ticker} — se publicaría:", fg="yellow")
+            con_img = " (+gráfico)" if i.imagen else ""
+            typer.secho(f"[seco] {i.id} {i.ticker}{con_img} — se publicaría:",
+                        fg="yellow")
             typer.echo(f"     {i.texto_final[:120]}")
             continue
+        from pathlib import Path as _Path
+
+        imagen = _Path(i.imagen) if i.imagen else None
+        if imagen is not None and not imagen.exists():
+            typer.secho(f"     (el gráfico {imagen.name} ya no está; sale sin "
+                        f"imagen)", fg="yellow")
+            imagen = None
         try:
-            res = publicar_item(i, token, handle=s.x_handle or "")
+            res = publicar_item(i, token, handle=s.x_handle or "",
+                                imagen=imagen)
         except PublicarError as e:
             typer.secho(f"[FALLÓ] {i.id}: {e}", fg="red")
             continue
@@ -573,6 +589,26 @@ def publicar(
                     "`xc publicar --no-en-seco`", bold=True)
     else:
         typer.echo(f"\n{publicados} publicado(s).")
+
+
+def _grafico_para(brief, settings, item_id: str):
+    """Gráfico de escenarios del brief, o None si no hay con qué dibujarlo.
+
+    Nunca aborta la generación: un post sin gráfico sigue siendo publicable,
+    uno con gráfico inventado no.
+    """
+    from xcreator.datos import price_history
+    from xcreator.graficos import grafico_escenarios, puede_graficar
+
+    if not puede_graficar(brief):
+        return None
+    try:
+        historico = price_history(brief.ticker, settings.fmp_api_key, dias=180)
+        destino = settings.root / "Contenido" / "graficos" / f"{item_id}.png"
+        return grafico_escenarios(brief, historico, destino)
+    except Exception as e:  # noqa: BLE001 - el gráfico es opcional
+        typer.secho(f"  (sin gráfico: {type(e).__name__})", fg="yellow")
+        return None
 
 
 @app.command("cola")

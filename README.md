@@ -108,6 +108,29 @@ nuestras cifras aporten a ESE post.
 Un asistente que siempre encuentra algo que decir es una máquina de spam, y
 es exactamente lo que X penaliza.
 
+## Gráficos
+
+Cada borrador con los tres escenarios lleva su gráfico, generado con
+matplotlib y adjunto al post. **Adjuntar media no cuesta aparte**: un post
+con imagen vale lo mismo que uno de texto ($0.015).
+
+Las reglas de visualización del CLAUDE.md de Warren Buffett Jr se aplican
+aquí con más motivo que en un reporte, porque una imagen en X circula sin el
+texto que la acompañaba:
+
+- **Nunca una sola línea.** Se dibuja la banda bear-base-bull.
+- **Los supuestos van rotulados DENTRO de la imagen** — el "+40% growth"
+  tiene que viajar con ella.
+- **Histórico sólido, proyección punteada.** Sin excepción.
+- Todo el texto del gráfico, **en inglés**, como el resto del contenido.
+
+El gráfico se manda por Telegram con el borrador: aprobar una imagen sin
+verla es aprobar a ciegas. Y se adjunta solo a la primera pieza de un hilo —
+repetirlo en cada post es ruido.
+
+Requiere el scope `media.write` en el token de OAuth; sin él, `/2/media/upload`
+devuelve un 403 escueto que no menciona los scopes.
+
 ## Qué publicar hoy
 
 ```bash

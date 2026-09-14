@@ -33,7 +33,10 @@ AUTORIZAR = "https://x.com/i/oauth2/authorize"
 TOKEN = "https://api.x.com/2/oauth2/token"
 # `offline.access` es el que da refresh token: sin él hay que reautorizar a
 # mano cada dos horas, que en un proceso por cron es inviable.
-SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"]
+# `media.write` hace falta para adjuntar imágenes: sin él, /2/media/upload
+# devuelve un 403 escueto que no menciona los scopes.
+SCOPES = ["tweet.read", "tweet.write", "users.read", "media.write",
+          "offline.access"]
 PUERTO_CALLBACK = 8788
 CALLBACK = f"http://localhost:{PUERTO_CALLBACK}/callback"
 

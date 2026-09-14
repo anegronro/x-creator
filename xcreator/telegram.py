@@ -73,6 +73,33 @@ class Bot:
             payload["reply_markup"] = {"force_reply": True, "selective": True}
         return self._call("sendMessage", **payload)
 
+    def send_photo(self, imagen: Path, texto: str,
+                   *, botones: list | None = None) -> dict:
+        """Manda una foto con pie y botones. El pie de Telegram va hasta 1024
+        caracteres: lo que sobra se recorta, porque el texto completo ya está
+        en la cola y lo que importa aquí es decidir con la imagen delante."""
+        import json as _json
+
+        datos: dict[str, Any] = {"chat_id": self.chat_id,
+                                 "caption": texto[:1024]}
+        if botones:
+            datos["reply_markup"] = _json.dumps({"inline_keyboard": botones})
+        try:
+            with imagen.open("rb") as fh:
+                r = httpx.post(
+                    API.format(token=self.token, method="sendPhoto"),
+                    data=datos, files={"photo": (imagen.name, fh, "image/png")},
+                    timeout=TIMEOUT)
+        except httpx.HTTPError as e:
+            raise TelegramError(f"sendPhoto: sin conexión ({type(e).__name__})") from e
+        try:
+            d = r.json()
+        except ValueError:
+            raise TelegramError(f"sendPhoto: respuesta no-JSON (HTTP {r.status_code})")
+        if not d.get("ok"):
+            raise TelegramError(f"sendPhoto: {d.get('description', 'error')}")
+        return d.get("result", {})
+
     def answer_callback(self, callback_id: str, texto: str = "") -> None:
         """Quita el "cargando" del botón. Cosmético, y caduca en segundos.
 
@@ -228,7 +255,14 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
                   if not i.metricas.get("telegram_message_id")]
     n = 0
     for item in sin_enviar[:limite]:
-        res = bot.send(_texto_item(item), botones=_botones(item.id))
+        imagen = Path(item.imagen) if item.imagen else None
+        if imagen is not None and imagen.exists():
+            # Con gráfico se manda la foto: aprobar una imagen sin verla es
+            # aprobar a ciegas.
+            res = bot.send_photo(imagen, _texto_item(item),
+                                 botones=_botones(item.id))
+        else:
+            res = bot.send(_texto_item(item), botones=_botones(item.id))
         queue.update(item.id, metricas={**item.metricas,
                                         "telegram_message_id": res.get("message_id")})
         n += 1

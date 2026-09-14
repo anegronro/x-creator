@@ -1540,3 +1540,28 @@ def test_se_queda_con_la_fecha_mas_reciente(tmp_path):
     b = q.add(_draft("nuevo", ticker="NVDA"))
     q.update(b.id, creado="2026-09-13T10:00:00+00:00")
     assert q.ultimo_uso_por_ticker()["NVDA"] == "2026-09-13"
+
+
+def test_pedir_un_ticker_concreto_lo_busca_en_todos(tmp_path):
+    """Con 178 tickers analizados, un límite bajo devolvía 'no hay
+    predicciones' para casi cualquier ticker.
+
+    Y ojo con el criterio de corte: `load_briefs` ordena por la fecha que hay
+    DENTRO del JSON, y un análisis en lote se las pone todas iguales. El
+    límite entonces no recorta "los más recientes" sino los que el glob
+    devuelve primero, que es orden alfabético.
+    """
+    import json
+
+    from xcreator.brief import load_briefs
+
+    for t in ["AAA", "BBB", "CCC", "ZZZ"]:
+        d = tmp_path / t / "2026-09-14"
+        d.mkdir(parents=True)
+        (d / "prediccion.json").write_text(json.dumps({**_PRED, "ticker": t}))
+
+    assert {b.ticker for b in load_briefs(tmp_path, limit=500)} == {
+        "AAA", "BBB", "CCC", "ZZZ"}
+    # Con el límite corto entran los alfabéticamente primeros, así que pedir
+    # ZZZ por nombre no puede usarlo.
+    assert "ZZZ" not in {b.ticker for b in load_briefs(tmp_path, limit=2)}

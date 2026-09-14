@@ -37,6 +37,8 @@ class Item:
     numeros_no_justificados: list[str] = field(default_factory=list)
     truncado: bool = False
     idioma_incorrecto: bool = False
+    # Ruta del gráfico que acompaña al post, si lo tiene.
+    imagen: str = ""
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -106,6 +108,7 @@ class Queue:
             numeros_no_justificados=list(draft.numeros_no_justificados),
             truncado=getattr(draft, "truncado", False),
             idioma_incorrecto=getattr(draft, "idioma_incorrecto", False),
+            imagen=str(getattr(draft, "imagen", "") or ""),
             responde_a=getattr(draft, "autor", ""),
             url_origen=getattr(draft, "url", ""),
         )

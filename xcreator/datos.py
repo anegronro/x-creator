@@ -97,3 +97,39 @@ def load_company_names(reportes_dir: Path | None) -> dict[str, str]:
         if len(corto) >= 3:
             nombres[corto] = ticker.upper()
     return nombres
+
+
+def price_history(ticker: str, api_key: str | None, *, dias: int = 180,
+                  timeout: float = 20.0) -> list[tuple[str, float]]:
+    """[(fecha ISO, cierre)] de los últimos `dias`, del más viejo al más nuevo.
+
+    Devuelve [] si no hay clave o la llamada falla: un gráfico sin histórico
+    no se dibuja, pero el post de texto sigue saliendo.
+    """
+    if not api_key:
+        return []
+    from datetime import date, timedelta
+
+    hoy = date.today()
+    try:
+        # El endpoint /api/v3/historical-price-full está retirado (403
+        # "Legacy Endpoint"): el vivo es /stable/historical-price-eod/full.
+        r = httpx.get(
+            "https://financialmodelingprep.com/stable/historical-price-eod/full",
+            params={"symbol": ticker, "apikey": api_key,
+                    "from": str(hoy - timedelta(days=dias)), "to": str(hoy)},
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        data = r.json()
+    except (httpx.HTTPError, ValueError):
+        return []
+    filas = data if isinstance(data, list) else data.get("historical")
+    if not filas:
+        return []
+    out = []
+    for f in filas:
+        fecha, cierre = f.get("date"), f.get("close")
+        if fecha and isinstance(cierre, (int, float)):
+            out.append((fecha, float(cierre)))
+    return sorted(out)

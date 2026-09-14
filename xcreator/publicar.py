@@ -18,12 +18,16 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import httpx
 
 from xcreator.generate import MAX_CHARS, es_ingles, validate_numbers
 
 POST_URL = "https://api.x.com/2/tweets"
+MEDIA_URL = "https://api.x.com/2/media/upload"
+# X rechaza imágenes por encima de esto; los gráficos pesan ~100 KB.
+MAX_BYTES_IMAGEN = 5 * 1024 * 1024
 COSTO_POST = 0.015
 COSTO_POST_CON_LINK = 0.20
 _URL = re.compile(r"https?://\S+|\bt\.co/\S+")
@@ -80,6 +84,43 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
     return problemas
 
 
+def subir_media(token: str, imagen: Path, *, timeout: float = 60.0) -> str:
+    """Sube una imagen y devuelve su media_id.
+
+    Adjuntar media no cuesta aparte: un post con imagen vale lo mismo que uno
+    de texto ($0.015). Lo que sí hace falta es el scope `media.write`, y sin
+    él la API responde un 403 escueto que no lo menciona.
+    """
+    if not imagen.exists():
+        raise PublicarError(f"no existe la imagen {imagen}")
+    peso = imagen.stat().st_size
+    if peso > MAX_BYTES_IMAGEN:
+        raise PublicarError(
+            f"la imagen pesa {peso/1024/1024:.1f} MB, por encima del límite "
+            f"de {MAX_BYTES_IMAGEN/1024/1024:.0f} MB de X")
+    try:
+        with imagen.open("rb") as fh:
+            r = httpx.post(
+                MEDIA_URL, headers={"Authorization": f"Bearer {token}"},
+                files={"media": (imagen.name, fh, "image/png")},
+                data={"media_category": "tweet_image"}, timeout=timeout)
+    except httpx.HTTPError as e:
+        raise PublicarError(f"subida de media: sin conexión ({type(e).__name__})") from e
+    if r.status_code == 403:
+        raise PublicarError(
+            "403 al subir la imagen: al token le falta el scope `media.write`. "
+            "Corre `xc x-auth` otra vez para reautorizar con el scope nuevo.")
+    if r.status_code == 402:
+        raise PublicarError("Sin créditos en X (402) al subir la imagen.")
+    if r.status_code >= 400:
+        raise PublicarError(f"subida de media: HTTP {r.status_code} — {r.text[:200]}")
+    d = r.json().get("data") or r.json()
+    media_id = d.get("id") or d.get("media_id_string") or d.get("media_key")
+    if not media_id:
+        raise PublicarError(f"subida sin id: {str(r.json())[:200]}")
+    return str(media_id)
+
+
 def _post(token: str, payload: dict, timeout: float = 30.0) -> dict:
     try:
         r = httpx.post(POST_URL, json=payload, timeout=timeout,
@@ -109,8 +150,12 @@ def _post(token: str, payload: dict, timeout: float = 30.0) -> dict:
 
 
 def publicar_item(item, token: str, *, handle: str = "",
+                  imagen: Path | None = None,
                   en_seco: bool = False) -> Publicado:
     """Publica un item ya revisado. Un hilo se encadena con `reply`.
+
+    `imagen` se adjunta SOLO a la primera pieza: repetir el gráfico en cada
+    post del hilo es ruido, y el que abre es el que se ve en el timeline.
 
     `en_seco` recorre todo sin llamar a X: sirve para ver qué se enviaría.
     """
@@ -119,10 +164,14 @@ def publicar_item(item, token: str, *, handle: str = "",
     if en_seco:
         return Publicado(post_id="(en seco)", url="", costo=total)
 
+    media_id = subir_media(token, imagen) if imagen else None
+
     primero: str | None = None
     anterior: str | None = None
     for p in piezas:
         payload: dict = {"text": p}
+        if media_id and primero is None:
+            payload["media"] = {"media_ids": [media_id]}
         if anterior:
             payload["reply"] = {"in_reply_to_tweet_id": anterior}
         elif item.url_origen:
