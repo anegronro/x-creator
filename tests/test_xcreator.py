@@ -1410,3 +1410,20 @@ def test_una_cifra_que_no_esta_en_ningun_lado_sigue_bloqueada():
 
     permitidos = [155.83] + _numeros_del_texto("CPI at 4%")
     assert validate_numbers("Margins hit 78.2%.", permitidos)
+
+
+def test_el_limite_no_se_gasta_en_los_ya_enviados(tmp_path):
+    """Con el filtro después del límite, un borrador nuevo detrás de otros ya
+    enviados no salía nunca del teléfono."""
+    from xcreator.telegram import enviar_pendientes
+
+    q = Queue(tmp_path / "cola.jsonl")
+    for k in range(3):
+        i = q.add(_draft(f"viejo {k}"))
+        q.update(i.id, metricas={"telegram_message_id": 100 + k})
+    nuevo = q.add(_draft("nuevo"))
+
+    bot = FakeBot()
+    assert enviar_pendientes(q, bot, limite=2) == 1
+    assert "nuevo" in bot.enviados[0]["texto"]
+    assert q.get(nuevo.id).metricas["telegram_message_id"]

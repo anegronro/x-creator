@@ -210,11 +210,16 @@ def _botones(item_id: str) -> list:
 # --- acciones -------------------------------------------------------------
 
 def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
-    """Manda los pendientes que aún no se enviaron. Devuelve cuántos."""
+    """Manda los pendientes que aún no se enviaron. Devuelve cuántos.
+
+    El filtro va ANTES del límite: al revés, si los primeros de la cola ya
+    estaban en el teléfono, el límite se consumía con ellos y los borradores
+    nuevos no salían nunca.
+    """
+    sin_enviar = [i for i in queue.pendientes()
+                  if not i.metricas.get("telegram_message_id")]
     n = 0
-    for item in queue.pendientes()[:limite]:
-        if item.metricas.get("telegram_message_id"):
-            continue  # ya está en tu teléfono esperando
+    for item in sin_enviar[:limite]:
         res = bot.send(_texto_item(item), botones=_botones(item.id))
         queue.update(item.id, metricas={**item.metricas,
                                         "telegram_message_id": res.get("message_id")})
