@@ -196,8 +196,27 @@ mencionan tickers que cubrimos.
 El log vive en `Contenido/cron.log` y solo registra cuando pasa algo: un log
 que dice "sin novedades" 288 veces al día deja de leerse.
 
-**Ojo con la Mac dormida:** el cron no corre si la Mac está suspendida. Para
-24/7 real hay que moverlo a un VPS.
+### En el VPS (24/7)
+
+El cron vive en el VPS, no en la Mac: un portátil suspendido no ejecuta nada.
+
+```bash
+scripts/deploy.sh          # sube código y motor, instala dependencias, verifica
+```
+
+El despliegue **no sube `Contenido/`** a propósito: ahí está el estado vivo
+del agente (la cola, los tokens de OAuth, qué posts ya se leyeron).
+Sobrescribirlo desde la Mac borraría las aprobaciones hechas desde el
+teléfono y obligaría a releer —y repagar— posts ya vistos.
+
+El VPS corre en **UTC** y Angel en **AST (UTC−4)**: las horas del crontab
+están en UTC con la hora local anotada al lado. Un despliegue que ignora esto
+funciona, pero publica a deshora y nadie entiende por qué.
+
+Hay además un cron diario de `wbj analyze-batch` en el VPS. Sin él, los
+briefs se quedan congelados en el día del despliegue y el contenido empieza a
+repetirse: `Reportes/` está en el `.gitignore`, así que el autosync de git
+nunca los lleva.
 
 ## Lo que falta
 
