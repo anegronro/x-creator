@@ -22,7 +22,7 @@ from pathlib import Path
 
 import httpx
 
-from xcreator.generate import MAX_CHARS, es_ingles, validate_numbers
+from xcreator.generate import MAX_CHARS, es_ingles, falta_ticker, validate_numbers
 
 POST_URL = "https://api.x.com/2/tweets"
 MEDIA_URL = "https://api.x.com/2/media/upload"
@@ -96,6 +96,16 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
                 f"pieza {i} lleva un link (cuesta ${COSTO_POST_CON_LINK} en vez "
                 f"de ${COSTO_POST} y baja el alcance). Usa --permitir-link si "
                 f"de verdad lo quieres")
+    # El ticker se revisa AQUÍ y no solo al generar. Tres posts salieron sin
+    # cashtag porque se redactaron 43 minutos antes de que la regla llegara al
+    # VPS: el campo no existía en el borrador viejo, se guardó vacío y nadie
+    # lo volvió a mirar. Una regla que solo corre en generación no protege a
+    # lo que ya está en la cola.
+    if item.ticker:
+        faltan = falta_ticker("\n".join(piezas), item.ticker)
+        if faltan:
+            problemas.append(
+                f"falta el ticker en el texto final: {', '.join(faltan)}")
     # X bloqueó los replies programáticos el 2026-02-23 para frenar el spam
     # de replies generados con LLM: POST /2/tweets solo admite responder si el
     # autor original te menciona o te cita. Aplica a todos los planes salvo

@@ -2124,3 +2124,46 @@ def test_los_replies_de_ayer_no_cuentan(tmp_path):
     i = q.add(_draft("de ayer", kind="reply"))
     q.update(i.id, creado="2020-01-01T10:00:00+00:00")
     assert q.replies_de_hoy() == 0
+
+
+def test_bloquea_texto_final_sin_cashtag(tmp_path):
+    """El ticker se revisa al publicar, no solo al generar.
+
+    Tres posts salieron sin `$TICKER` porque se redactaron antes de que la
+    regla llegara al VPS: el borrador viejo no traía el campo, se guardó
+    vacío y el publicador no lo volvía a mirar.
+    """
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "NVDA prints at $196.53 today.", ticker="NVDA")
+    problemas = revisar_antes_de_publicar(item)
+    assert any("falta el ticker" in p and "$NVDA" in p for p in problemas)
+
+
+def test_deja_pasar_el_texto_con_las_dos_formas_del_ticker(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "$NVDA prints at $196.53. NVDA holds only if growth lands.",
+        ticker="NVDA")
+    assert revisar_antes_de_publicar(item) == []
+
+
+def test_el_post_macro_sin_ticker_no_se_bloquea(tmp_path):
+    """Un post de mercado no tiene ticker: exigirlo lo mataría."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "The 10-year sits at 4.95% and nobody is repricing.",
+        ticker="")
+    assert revisar_antes_de_publicar(item) == []
+
+
+def test_el_ticker_puede_estar_repartido_en_el_hilo(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "$NVDA base case at $275.14.",
+        ticker="NVDA", thread=["NVDA holds only if growth stays 40%."])
+    assert revisar_antes_de_publicar(item) == []
