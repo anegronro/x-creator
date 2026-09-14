@@ -213,6 +213,9 @@ def redactar(
         if d.idioma_incorrecto:
             typer.secho("  NO ESTÁ EN INGLÉS — el contenido siempre va en inglés",
                         fg="red")
+        if d.tickers_faltantes:
+            typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
+                        fg="red")
         if encolar:
             item = q.add(d)
             ruta = _grafico_para(brief, s, item.id)
@@ -338,6 +341,9 @@ def responder(
         typer.secho(f"  se pasa por {d.exceso_caracteres} caracteres", fg="red")
     if d.truncado:
         typer.secho("  TEXTO CORTADO — no publicar así", fg="red")
+    if d.tickers_faltantes:
+        typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
+                    fg="red")
     if encolar:
         item = q.add(d)
         typer.echo(f"  -> cola id {item.id}")

@@ -1565,3 +1565,57 @@ def test_pedir_un_ticker_concreto_lo_busca_en_todos(tmp_path):
     # Con el límite corto entran los alfabéticamente primeros, así que pedir
     # ZZZ por nombre no puede usarlo.
     assert "ZZZ" not in {b.ticker for b in load_briefs(tmp_path, limit=2)}
+
+
+# --- el ticker, siempre en las dos formas ---------------------------------
+
+@pytest.mark.parametrize("texto,faltan", [
+    ("$NVDA base is $305.61. NVDA multiple never moves.", []),
+    ("$NVDA base is $305.61.", ["NVDA"]),          # falta el plano
+    ("NVDA base is $305.61.", ["$NVDA"]),          # falta el cashtag
+    ("Nothing about the company here.", ["$NVDA", "NVDA"]),
+])
+def test_exige_las_dos_formas_del_ticker(texto, faltan):
+    """X indexa el cashtag y el texto plano por separado: usar solo uno tira
+    la mitad del descubrimiento, que es lo escaso en una cuenta pequeña."""
+    from xcreator.generate import falta_ticker
+
+    assert falta_ticker(texto, "NVDA") == faltan
+
+
+def test_el_cashtag_no_cuenta_como_ticker_plano():
+    from xcreator.generate import falta_ticker
+
+    assert falta_ticker("Only $NVDA here", "NVDA") == ["NVDA"]
+
+
+def test_un_post_sin_las_dos_formas_no_es_valido():
+    assert not _draft("NVDA is expensive", tickers_faltantes=["$NVDA"]).valido
+
+
+def test_un_reply_sin_las_dos_formas_no_es_valido():
+    from xcreator.replies import ReplyDraft
+
+    d = ReplyDraft(texto="NVDA is crowded", que_aporta="x", autor="@y",
+                   tickers_faltantes=["$NVDA"])
+    assert not d.valido
+
+
+def test_la_cola_persiste_el_flag_del_ticker(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto", tickers_faltantes=["$NVDA"]))
+    assert q.get(i.id).tickers_faltantes == ["$NVDA"]
+
+
+@pytest.mark.parametrize("texto,cortado", [
+    ("If you think the floor breaks, tell me what breaks it. $IREN", False),
+    ("Quality and payoff are separate questions. IREN", False),
+    ("the bear, what a 45.10 P/E costs you", True),      # sí está cortado
+    ("Base still needs another", True),
+])
+def test_cerrar_con_el_ticker_no_es_truncamiento(texto, cortado):
+    """Al exigir el ticker en las dos formas, el modelo empezó a cerrar con
+    él — y el detector de frase cortada lo marcaba como roto."""
+    from xcreator.generate import _parece_cortado
+
+    assert _parece_cortado(texto) is cortado

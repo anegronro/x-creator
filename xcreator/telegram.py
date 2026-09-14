@@ -229,6 +229,8 @@ def _texto_item(item) -> str:
         avisos.append("TEXTO CORTADO a media frase")
     if getattr(item, "idioma_incorrecto", False):
         avisos.append("NO ESTÁ EN INGLÉS")
+    if getattr(item, "tickers_faltantes", None):
+        avisos.append(f"FALTA EL TICKER: {', '.join(item.tickers_faltantes)}")
     if avisos:
         partes += ["", "⚠️ " + " | ".join(avisos)]
     return "\n".join(partes)

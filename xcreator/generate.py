@@ -90,6 +90,13 @@ classifications and ranges with stated assumptions. "The model's range is X" \
 is fine; "load up here" is not.
 3. NEVER include a link or a URL. Links cut organic reach and cost 13x more \
 to publish.
+3b. ALWAYS mention the ticker BOTH ways somewhere in the post: as a cashtag \
+($NVDA) and as plain text (NVDA). X indexes them separately — the cashtag \
+makes it clickable and files it under the symbol, the plain text shows up in \
+regular search. Using only one throws away half the discovery. Work both \
+into sentences that read naturally; do NOT tack the ticker onto the end as a \
+label. "$NVDA base is $305.61" and "NVDA still trades at 44x" beats any \
+version that ends with a bare ticker.
 4. Always state the assumption behind a projection. A number without its \
 assumption is a lie told with confidence.
 5. Never present a projection as a single value when the brief gives a range.
@@ -168,17 +175,44 @@ _CIERRES = ".!?\"')]}…"
 _SALTO_ROTO = re.compile(r"[^.!?:\"')\]}…\n]\s*\n\s*[a-z]")
 
 
+def falta_ticker(texto: str, ticker: str) -> list[str]:
+    """Qué formas del ticker faltan. Lista vacía = están las dos.
+
+    X indexa el cashtag y el texto plano por separado: `$NVDA` lo hace
+    clickeable y entra en la página del símbolo, `NVDA` a secas aparece en
+    las búsquedas de texto. Poner solo uno renuncia a la mitad del
+    descubrimiento, que es lo escaso cuando la cuenta es pequeña.
+    """
+    if not ticker:
+        return []
+    t = re.escape(ticker.upper())
+    faltan = []
+    if not re.search(rf"\${t}\b", texto, re.IGNORECASE):
+        faltan.append(f"${ticker.upper()}")
+    # El ticker suelto: `(?<!\$)` evita contar el que ya lleva el cashtag.
+    if not re.search(rf"(?<!\$)\b{t}\b", texto, re.IGNORECASE):
+        faltan.append(ticker.upper())
+    return faltan
+
+
+# Un post puede cerrar legítimamente con el ticker, sin puntuación final.
+_CIERRA_CON_TICKER = re.compile(r"\$?[A-Z]{1,5}$")
+
+
 def _parece_cortado(texto: str) -> bool:
     """True si el texto parece interrumpido o partido a media frase.
 
     Dos formas distintas de lo mismo, y la segunda costó un reply inservible
     que pasó como válido: el final truncado se ve mirando el último carácter,
     pero una palabra rota EN MEDIO solo se ve mirando los saltos de línea.
+
+    Terminar en un ticker (`... at 89.40x. $IREN`) NO es truncamiento: es un
+    cierre normal en X, y marcarlo como roto invalidaba posts perfectos.
     """
     t = texto.rstrip()
     if not t:
         return False
-    if t[-1] not in _CIERRES:
+    if t[-1] not in _CIERRES and not _CIERRA_CON_TICKER.search(t):
         return True
     return bool(_SALTO_ROTO.search(t))
 
@@ -199,6 +233,7 @@ class Draft:
     exceso_caracteres: int = 0
     truncado: bool = False
     idioma_incorrecto: bool = False
+    tickers_faltantes: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -207,6 +242,7 @@ class Draft:
             and self.exceso_caracteres == 0
             and not self.truncado
             and not self.idioma_incorrecto
+            and not self.tickers_faltantes
         )
 
     @property
@@ -434,6 +470,8 @@ def draft_posts(
                 exceso_caracteres=exceso,
                 truncado=respuesta_truncada or _parece_cortado(v.text),
                 idioma_incorrecto=not es_ingles(v.text),
+                # Se mira el hilo completo: basta con que aparezcan una vez.
+                tickers_faltantes=falta_ticker("\n".join(piezas), brief.ticker),
             )
         )
     return drafts

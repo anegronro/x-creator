@@ -24,7 +24,7 @@ from typing import Any
 
 from xcreator.brief import Brief
 from xcreator.generate import (
-    MAX_CHARS, _parece_cortado, es_ingles, validate_numbers,
+    MAX_CHARS, _parece_cortado, es_ingles, falta_ticker, validate_numbers,
 )
 
 # Preferencia editorial, no límite: un reply largo rinde peor porque se lee
@@ -155,6 +155,9 @@ accounts throttled.
 winning. The best replies make the original author want to answer.
 4. Never tell anyone to buy or sell.
 5. No links. No hashtags. No emoji.
+5b. Mention the ticker BOTH ways: as a cashtag ($NVDA) and as plain text \
+(NVDA). X indexes them separately and a small account cannot afford to skip \
+half the discovery.
 6. Stand alone: someone reading only your reply should learn something \
 without opening the parent post.
 7. If the brief genuinely has nothing that bears on this post, say so by \
@@ -200,6 +203,7 @@ class ReplyDraft:
     exceso_caracteres: int = 0
     truncado: bool = False
     idioma_incorrecto: bool = False
+    tickers_faltantes: list[str] = field(default_factory=list)
     # Cuando el modelo decide que no hay nada que aportar.
     declinado: bool = False
     motivo: str = ""
@@ -218,6 +222,7 @@ class ReplyDraft:
             and self.exceso_caracteres == 0
             and not self.truncado
             and not self.idioma_incorrecto
+            and not self.tickers_faltantes
         )
 
 
@@ -310,4 +315,5 @@ def draft_reply(
         truncado=(getattr(resp, "stop_reason", None) == "max_tokens"
                   or _parece_cortado(texto)),
         idioma_incorrecto=not es_ingles(texto),
+        tickers_faltantes=falta_ticker(texto, relevancia.ticker),
     )

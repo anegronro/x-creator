@@ -39,6 +39,7 @@ class Item:
     idioma_incorrecto: bool = False
     # Ruta del gráfico que acompaña al post, si lo tiene.
     imagen: str = ""
+    tickers_faltantes: list[str] = field(default_factory=list)
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -109,6 +110,7 @@ class Queue:
             truncado=getattr(draft, "truncado", False),
             idioma_incorrecto=getattr(draft, "idioma_incorrecto", False),
             imagen=str(getattr(draft, "imagen", "") or ""),
+            tickers_faltantes=list(getattr(draft, "tickers_faltantes", [])),
             responde_a=getattr(draft, "autor", ""),
             url_origen=getattr(draft, "url", ""),
         )
