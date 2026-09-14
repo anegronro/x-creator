@@ -45,6 +45,12 @@ class Settings:
     # Tope de gasto por pasada. Un bucle con un bug no puede vaciar los
     # créditos en una tarde.
     x_presupuesto_pasada: float = 0.50
+    # Solo UNA máquina puede hablar con Telegram. Dos instancias con el mismo
+    # bot se roban los updates (el primero que llega los consume) y cada una
+    # busca el borrador en SU cola: aprobar en el teléfono un borrador de la
+    # otra da "ese borrador ya no existe". El VPS es el dueño porque corre
+    # 24/7; la Mac queda para desarrollar.
+    telegram_activo: bool = True
     # Bot PROPIO. Sin fallback a ningún TELEGRAM_BOT_TOKEN genérico: un
     # fallback silencioso mandaría estos posts al chat de otro agente.
     telegram_bot_token: str | None = None
@@ -115,6 +121,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_handle=get("X_HANDLE"),
         x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
+        telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
+        not in ("false", "0", "no"),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_X_CHAT_ID"),
         reportes_dir=Path(reportes).expanduser() if reportes else None,

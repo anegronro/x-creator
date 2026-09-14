@@ -165,6 +165,12 @@ def revisar_credenciales(settings) -> list[str]:
 
 def bot_desde(settings) -> Bot:
     """Construye el bot o explica exactamente qué falta."""
+    if not getattr(settings, "telegram_activo", True):
+        raise TelegramError(
+            "Telegram está DESACTIVADO en esta máquina (TELEGRAM_ACTIVO=false). "
+            "El dueño del bot es el VPS: dos instancias con el mismo bot se "
+            "roban los updates y cada una busca el borrador en su propia cola."
+        )
     problemas = revisar_credenciales(settings)
     if problemas:
         raise TelegramError(" | ".join(problemas))

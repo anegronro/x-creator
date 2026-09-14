@@ -1619,3 +1619,24 @@ def test_cerrar_con_el_ticker_no_es_truncamiento(texto, cortado):
     from xcreator.generate import _parece_cortado
 
     assert _parece_cortado(texto) is cortado
+
+
+def test_una_maquina_desactivada_no_habla_con_telegram():
+    """Dos instancias con el mismo bot se roban los updates y cada una busca
+    el borrador en SU cola: aprobar en el teléfono uno de la otra máquina
+    responde 'ese borrador ya no existe'."""
+    from xcreator.telegram import TelegramError, bot_desde
+
+    s = SimpleNamespace(telegram_activo=False,
+                        telegram_bot_token="8123456789:" + "x" * 31,
+                        telegram_chat_id="123")
+    with pytest.raises(TelegramError, match="DESACTIVADO"):
+        bot_desde(s)
+
+
+def test_por_defecto_telegram_esta_activo():
+    from xcreator.telegram import bot_desde
+
+    s = SimpleNamespace(telegram_bot_token="8123456789:" + "x" * 31,
+                        telegram_chat_id="123")
+    assert bot_desde(s).chat_id == "123"
