@@ -39,6 +39,9 @@ class Settings:
     x_client_id: str | None = None
     x_client_secret: str | None = None
     x_handle: str | None = None
+    # Por si la app registró otro callback: tiene que coincidir EXACTAMENTE
+    # con el de developer.x.com, y el servidor local escucha en su puerto.
+    x_callback: str | None = None
     # Tope de gasto por pasada. Un bucle con un bug no puede vaciar los
     # créditos en una tarde.
     x_presupuesto_pasada: float = 0.50
@@ -110,6 +113,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_client_id=get("X_CLIENT_ID"),
         x_client_secret=get("X_CLIENT_SECRET"),
         x_handle=get("X_HANDLE"),
+        x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_X_CHAT_ID"),

@@ -1247,3 +1247,76 @@ def test_402_al_publicar_tambien_es_claro(monkeypatch):
         402, json={"detail": "credits depleted"}))
     with pytest.raises(PublicarError, match="Sin créditos"):
         _post("tok", {"text": "hola"})
+
+
+def test_el_servidor_escucha_en_el_puerto_del_callback():
+    """Escuchar en otro puerto deja la autorización colgada para siempre."""
+    from xcreator.xauth import puerto_de
+
+    assert puerto_de("http://localhost:8788/callback") == 8788
+    assert puerto_de("http://127.0.0.1:9999/cb") == 9999
+    assert puerto_de("http://localhost/callback") == 80
+
+
+def test_escucha_en_el_host_del_callback():
+    """localhost y 127.0.0.1 parecen lo mismo y no lo son: una pestaña vieja
+    apuntando al otro nombre entra por el mismo socket y gasta el flujo."""
+    from xcreator.xauth import host_y_puerto
+
+    assert host_y_puerto("http://127.0.0.1:8788/callback") == ("127.0.0.1", 8788)
+    assert host_y_puerto("http://localhost:9000/cb") == ("localhost", 9000)
+
+
+def test_se_ignora_un_callback_de_otra_sesion():
+    from xcreator.xauth import _Handler
+
+    _Handler.code = _Handler.state = None
+    _Handler.esperado = "el-bueno"
+
+    class Falso(_Handler):
+        def __init__(self, path):
+            self.path = path
+
+        def send_response(self, *a): pass
+        def send_header(self, *a): pass
+        def end_headers(self): pass
+        @property
+        def wfile(self):
+            class W:
+                def write(self, *a): pass
+            return W()
+
+    Falso("/callback?code=viejo&state=otro").do_GET()
+    assert _Handler.code is None          # descartado
+    Falso("/callback?code=nuevo&state=el-bueno").do_GET()
+    assert _Handler.code == "nuevo"       # aceptado
+
+
+def test_el_canje_usa_el_mismo_redirect_que_la_autorizacion(monkeypatch, tmp_path):
+    """Regresión: se autorizaba con 127.0.0.1 y se canjeaba con localhost,
+    porque el canje usaba la constante en vez del callback configurado."""
+    import xcreator.xauth as xa
+
+    visto = {}
+
+    def falso_intercambiar(cid, secret, almacen, datos):
+        visto.update(datos)
+        return xa.Tokens("tok", "ref", 9e9)
+
+    monkeypatch.setattr(xa, "_intercambiar", falso_intercambiar)
+
+    class Servidor:
+        def __init__(self, *a): pass
+        timeout = 0
+        def handle_request(self):
+            xa._Handler.code = "codigo"
+        def server_close(self): pass
+
+    monkeypatch.setattr(xa, "HTTPServer", Servidor)
+    monkeypatch.setattr(xa.webbrowser, "open", lambda u: None)
+    xa._Handler.code = None
+
+    cb = "http://127.0.0.1:9191/callback"
+    xa.autorizar("cid", xa.AlmacenTokens(tmp_path / "t.json"),
+                 callback=cb, abrir_navegador=False)
+    assert visto["redirect_uri"] == cb

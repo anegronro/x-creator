@@ -36,6 +36,22 @@ TOKEN = "https://api.x.com/2/oauth2/token"
 SCOPES = ["tweet.read", "tweet.write", "users.read", "offline.access"]
 PUERTO_CALLBACK = 8788
 CALLBACK = f"http://localhost:{PUERTO_CALLBACK}/callback"
+
+
+def host_y_puerto(callback: str) -> tuple[str, int]:
+    """Dónde escuchar, derivado del callback registrado en la app.
+
+    El servidor tiene que escuchar en el MISMO host y puerto a los que X va a
+    redirigir. Escuchar siempre en "localhost" parece equivalente a 127.0.0.1
+    y no lo es: una pestaña vieja apuntando al otro nombre acaba entrando por
+    el mismo socket y gastando el flujo con un código caducado.
+    """
+    u = urllib.parse.urlparse(callback)
+    return (u.hostname or "localhost"), (u.port or 80)
+
+
+def puerto_de(callback: str) -> int:
+    return host_y_puerto(callback)[1]
 # Margen para no usar un token que caduca mientras vuela la petición.
 MARGEN_REFRESH = 120
 
@@ -91,15 +107,21 @@ class AlmacenTokens:
 
 
 class _Handler(BaseHTTPRequestHandler):
-    """Recibe el redirect de X y se calla. Un solo uso."""
+    """Recibe el redirect de X. Ignora lo que no sea de esta sesión."""
 
     code: str | None = None
     state: str | None = None
+    esperado: str = ""
 
     def do_GET(self):  # noqa: N802
         q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-        _Handler.code = (q.get("code") or [None])[0]
-        _Handler.state = (q.get("state") or [None])[0]
+        code = (q.get("code") or [None])[0]
+        state = (q.get("state") or [None])[0]
+        # Una pestaña vieja recargándose trae un código caducado y de otro
+        # redirect_uri: si se acepta, el intercambio falla y hay que empezar
+        # de cero. Se descarta y se sigue esperando el bueno.
+        if code and state == _Handler.esperado:
+            _Handler.code, _Handler.state = code, state
         ok = _Handler.code is not None
         self.send_response(200 if ok else 400)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -113,8 +135,8 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def autorizar(client_id: str, almacen: AlmacenTokens,
-              *, client_secret: str = "", abrir_navegador: bool = True,
-              timeout: float = 300.0) -> Tokens:
+              *, client_secret: str = "", callback: str = CALLBACK,
+              abrir_navegador: bool = True, timeout: float = 300.0) -> Tokens:
     """Flujo completo: abre el navegador, espera el callback, guarda tokens.
 
     El usuario autoriza en SU navegador, con SU sesión. Aquí no se pide ni se
@@ -131,7 +153,7 @@ def autorizar(client_id: str, almacen: AlmacenTokens,
     url = AUTORIZAR + "?" + urllib.parse.urlencode({
         "response_type": "code",
         "client_id": client_id,
-        "redirect_uri": CALLBACK,
+        "redirect_uri": callback,
         "scope": " ".join(SCOPES),
         "state": estado,
         "code_challenge": challenge,
@@ -139,24 +161,31 @@ def autorizar(client_id: str, almacen: AlmacenTokens,
     })
 
     _Handler.code = _Handler.state = None
-    servidor = HTTPServer(("localhost", PUERTO_CALLBACK), _Handler)
-    servidor.timeout = timeout
-    print(f"Abre esta URL y autoriza:\n\n{url}\n")
+    _Handler.esperado = estado
+    servidor = HTTPServer(host_y_puerto(callback), _Handler)
+    servidor.timeout = 10.0
+    print(f"Abre esta URL y autoriza:\n\n{url}\n", flush=True)
     if abrir_navegador:
         webbrowser.open(url)
-    servidor.handle_request()
+    limite = time.time() + timeout
+    while _Handler.code is None and time.time() < limite:
+        servidor.handle_request()   # descarta pestañas viejas y sigue
     servidor.server_close()
 
     if not _Handler.code:
-        raise AuthError("No llegó el código de autorización (¿se canceló?).")
-    if _Handler.state != estado:
-        # Defensa contra CSRF: el state de vuelta tiene que ser el que mandamos.
-        raise AuthError("El `state` no coincide: se descarta por seguridad.")
+        raise AuthError(
+            "No llegó el código de autorización de esta sesión (¿se canceló, "
+            "o se autorizó desde una pestaña vieja?)."
+        )
 
+    # El redirect_uri del canje tiene que ser EXACTAMENTE el mismo que el de
+    # la autorización. Usar aquí la constante en vez de la variable fue un
+    # bug real: se autorizaba con 127.0.0.1 y se canjeaba con localhost, y X
+    # respondía —con razón— que no coincidían.
     return _intercambiar(
         client_id, client_secret, almacen,
         {"grant_type": "authorization_code", "code": _Handler.code,
-         "redirect_uri": CALLBACK, "code_verifier": verifier},
+         "redirect_uri": callback, "code_verifier": verifier},
     )
 
 

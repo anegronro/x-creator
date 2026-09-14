@@ -460,11 +460,15 @@ def x_auth() -> None:
 
     _, s = _queue()
     try:
+        callback = s.x_callback or CALLBACK
+        typer.echo(f"Callback usado: {callback}\n"
+                   f"(tiene que coincidir EXACTO con el de developer.x.com)\n")
         t = autorizar(s.x_client_id or "", AlmacenTokens(s.x_tokens_path),
-                      client_secret=s.x_client_secret or "")
+                      client_secret=s.x_client_secret or "", callback=callback)
     except AuthError as e:
         typer.secho(str(e), fg="red", err=True)
-        typer.echo(f"\nEn la app de X, el callback debe ser exactamente:\n  {CALLBACK}")
+        typer.echo(f"\nEn la app de X, el callback debe ser exactamente:\n  "
+                   f"{s.x_callback or CALLBACK}")
         raise typer.Exit(1)
     typer.secho("Autorizado. Ya se puede publicar.", fg="green")
     typer.echo(f"  refresh token: {'sí' if t.refresh_token else 'NO — tendrás que reautorizar cada 2h'}")
