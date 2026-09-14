@@ -1427,3 +1427,28 @@ def test_el_limite_no_se_gasta_en_los_ya_enviados(tmp_path):
     assert enviar_pendientes(q, bot, limite=2) == 1
     assert "nuevo" in bot.enviados[0]["texto"]
     assert q.get(nuevo.id).metricas["telegram_message_id"]
+
+
+def test_un_acuse_caducado_no_pierde_las_demas_aprobaciones(tmp_path):
+    """Telegram caduca los acuses en segundos y el cron pasa cada 5 minutos:
+    fallar ahí es lo normal. Tratarlo como fatal abortaba el bucle y perdía
+    las aprobaciones siguientes de la misma tanda."""
+    from xcreator.telegram import TelegramError, procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    a, b = q.add(_draft("uno")), q.add(_draft("dos"))
+
+    class BotConAcuseRoto(FakeBot):
+        def answer_callback(self, callback_id, texto=""):
+            raise TelegramError("query is too old")
+
+    bot = BotConAcuseRoto([_cb(a.id, "ok", update_id=1),
+                           _cb(b.id, "ok", update_id=2)])
+    # El bot real traga el fallo dentro de answer_callback; aquí se simula uno
+    # que no lo hace para probar que el bucle lo resiste igual.
+    try:
+        procesar_updates(q, bot, _estado(tmp_path))
+    except TelegramError:
+        pytest.fail("un acuse caducado no debe abortar el procesamiento")
+    assert q.get(a.id).estado == "aprobado"
+    assert q.get(b.id).estado == "aprobado"

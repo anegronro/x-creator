@@ -74,8 +74,16 @@ class Bot:
         return self._call("sendMessage", **payload)
 
     def answer_callback(self, callback_id: str, texto: str = "") -> None:
-        """Obligatorio: sin esto el botón se queda girando en el teléfono."""
-        self._call("answerCallbackQuery", callback_query_id=callback_id, text=texto)
+        """Quita el "cargando" del botón. Cosmético, y caduca en segundos.
+
+        El ciclo corre por cron cada 5 minutos, así que que este acuse llegue
+        tarde es lo NORMAL. Fallar aquí no puede costar una aprobación.
+        """
+        try:
+            self._call("answerCallbackQuery", callback_query_id=callback_id,
+                       text=texto)
+        except TelegramError:
+            pass
 
     def quitar_botones(self, message_id: int, nuevo_texto: str | None = None) -> None:
         """Deja el mensaje sin botones para que no se pueda votar dos veces."""
@@ -235,7 +243,21 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
 
     for up in updates:
         st["offset"] = up["update_id"] + 1
+        # Un update que falle no puede llevarse por delante los que vienen
+        # detrás en la misma tanda. El offset ya avanzó, así que tampoco se
+        # reprocesa en bucle.
+        try:
+            _procesar_uno(up, queue, bot, st, log)
+        except Exception as e:  # noqa: BLE001 - robustez deliberada
+            log.append(f"update {up.get('update_id')} falló: {e}")
 
+    estado.save(st)
+    return log
+
+
+def _procesar_uno(up: dict, queue, bot: Bot, st: dict, log: list[str]) -> None:
+    """Aplica UN update. Aislado para que su fallo no contamine la tanda."""
+    if True:
         cb = up.get("callback_query")
         if cb:
             data = cb.get("data", "")
@@ -243,7 +265,7 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
             item = queue.get(item_id)
             if item is None:
                 bot.answer_callback(cb["id"], "Ese borrador ya no existe.")
-                continue
+                return
             msg_id = (cb.get("message") or {}).get("message_id")
 
             if accion == "ok":
@@ -264,7 +286,7 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
                 )
                 st["esperando_edicion"][str(pedido["message_id"])] = item_id
                 log.append(f"{item_id} esperando edición")
-            continue
+            return
 
         msg = up.get("message")
         if msg and msg.get("reply_to_message"):
@@ -280,6 +302,3 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
                     log.append(f"{item_id} editado y aprobado")
                 else:
                     bot.send("No entendí el texto. El borrador sigue pendiente.")
-
-    estado.save(st)
-    return log
