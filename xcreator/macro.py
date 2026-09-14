@@ -25,6 +25,10 @@ class SerieMacro:
     unidad: str         # "pct" | "ratio" | "count"
     angulo: str         # la pregunta que abre este dato
     decimales: int = 2
+    # Las formas en que un redactor puede nombrar este dato. Al menos una
+    # tiene que aparecer en el post: sin empresa no hay cashtag que diga de
+    # qué se habla, y un porcentaje suelto no lo dice. Nadie es adivino.
+    alias: tuple[str, ...] = ()
 
 
 # Catálogo deliberadamente corto: series que mueven la conversación de
@@ -32,25 +36,32 @@ class SerieMacro:
 SERIES: dict[str, SerieMacro] = {
     "curva": SerieMacro(
         "T10Y2Y", "the 10y-2y Treasury spread", "pct",
-        "What does the shape of the curve say that the index doesn't?"),
+        "What does the shape of the curve say that the index doesn't?",
+        alias=("curve", "yield curve", "10y-2y", "10s2s", "2s10s", "two-year", "treasury")),
     "tasa10": SerieMacro(
         "DGS10", "the 10-year Treasury yield", "pct",
-        "What equity multiple survives this risk-free rate?"),
+        "What equity multiple survives this risk-free rate?",
+        alias=("10-year", "10 year", "10y", "ten-year", "treasury", "long bond")),
     "desempleo": SerieMacro(
         "UNRATE", "the unemployment rate", "pct",
-        "Is the labour market loosening fast enough to matter?", 1),
+        "Is the labour market loosening fast enough to matter?", 1,
+        alias=("unemployment", "jobless", "labour market", "labor market", "payroll")),
     "inflacion": SerieMacro(
         "CPIAUCSL", "CPI", "count",
-        "Is disinflation still happening, or did it stall?"),
+        "Is disinflation still happening, or did it stall?",
+        alias=("cpi", "inflation", "consumer price", "disinflation")),
     "hipoteca": SerieMacro(
         "MORTGAGE30US", "the 30-year mortgage rate", "pct",
-        "What does this do to housing-linked demand?"),
+        "What does this do to housing-linked demand?",
+        alias=("mortgage", "housing", "homebuy", "30-year fixed")),
     "fed": SerieMacro(
         "DFF", "the effective fed funds rate", "pct",
-        "How much room does the Fed actually have?"),
+        "How much room does the Fed actually have?",
+        alias=("fed funds", "federal funds", "the fed", "policy rate", "front end")),
     "highyield": SerieMacro(
         "BAMLH0A0HYM2", "the high-yield credit spread", "pct",
-        "Is credit pricing the same risk equities are?"),
+        "Is credit pricing the same risk equities are?",
+        alias=("high yield", "high-yield", "credit spread", "junk", "hy spread", "credit market")),
 }
 
 
@@ -159,6 +170,7 @@ def brief_macro(lectura: Lectura) -> Brief:
     return Brief(
         kind="macro",
         ticker="",          # no hay empresa: la regla del cashtag no aplica
+        sujeto=c.alias,     # ...así que el sujeto se exige por aquí
         angulo="mercado",
         angle=c.angulo,
         facts=facts,
@@ -166,6 +178,9 @@ def brief_macro(lectura: Lectura) -> Brief:
             f"El dato está {donde}.",
             "Es un dato observable de FRED, no una previsión.",
             "No hay empresa: no uses cashtags ni hables de un ticker.",
+            f"DI SIEMPRE de qué hablas: el post tiene que nombrar "
+            f"{c.nombre} con todas sus letras. Un porcentaje suelto no dice "
+            f"nada — el lector no tiene por qué adivinar qué mide ese número.",
             "Conecta el dato con lo que implica para los múltiplos o el "
             "apetito de riesgo, que es lo que le importa a la audiencia.",
         ],

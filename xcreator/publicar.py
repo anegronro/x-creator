@@ -22,7 +22,9 @@ from pathlib import Path
 
 import httpx
 
-from xcreator.generate import MAX_CHARS, es_ingles, falta_ticker, validate_numbers
+from xcreator.generate import (
+    MAX_CHARS, es_ingles, falta_sujeto, falta_ticker, validate_numbers,
+)
 
 POST_URL = "https://api.x.com/2/tweets"
 MEDIA_URL = "https://api.x.com/2/media/upload"
@@ -106,6 +108,19 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
         if faltan:
             problemas.append(
                 f"falta el ticker en el texto final: {', '.join(faltan)}")
+    # Un post de macro no tiene cashtag que diga de qué habla, así que aquí
+    # se exige que nombre algún sujeto reconocible. La comprobación es más
+    # gruesa que la de generación —el item no guarda de qué serie salió— pero
+    # caza el fallo que importa: un post que solo encadena porcentajes y deja
+    # al lector adivinando.
+    if item.kind == "macro" and not item.ticker:
+        from xcreator.macro import SERIES
+
+        todos = tuple(a for c in SERIES.values() for a in c.alias)
+        if falta_sujeto("\n".join(piezas), todos):
+            problemas.append(
+                "el texto no dice de qué habla: no nombra ningún dato macro "
+                "reconocible, solo cifras sueltas")
     # X bloqueó los replies programáticos el 2026-02-23 para frenar el spam
     # de replies generados con LLM: POST /2/tweets solo admite responder si el
     # autor original te menciona o te cita. Aplica a todos los planes salvo

@@ -2323,3 +2323,55 @@ def test_auto_se_queda_con_la_variante_valida(tmp_path, monkeypatch):
     assert len(items) == 1
     assert items[0].estado == "programado"
     assert "$AAA" in items[0].texto_final
+
+
+def test_el_post_macro_tiene_que_decir_de_que_habla():
+    """Un post que solo encadena porcentajes deja al lector adivinando.
+
+    El que se coló: «A year ago I thought 4.04% was the cycle ceiling.
+    Wrong. 4.70% a month back, 4.95% now» — nunca dice que habla del bono
+    a 10 años.
+    """
+    from xcreator.generate import falta_sujeto
+    from xcreator.macro import SERIES
+
+    diez = SERIES["tasa10"].alias
+    assert falta_sujeto(
+        "A year ago I thought 4.04% was the cycle ceiling. Wrong. 4.70% a "
+        "month back, 4.95% now, the high of the entire loaded history.", diez)
+    assert not falta_sujeto("The 10-year is at 4.95%, top of its range.", diez)
+    assert not falta_sujeto("Treasury yields printed 4.95% today.", diez)
+
+
+def test_cada_serie_macro_declara_como_se_llama():
+    """Sin alias, la regla del sujeto no protege a esa serie."""
+    from xcreator.macro import SERIES
+
+    for clave, cfg in SERIES.items():
+        assert cfg.alias, f"{clave} ({cfg.serie}) no declara alias"
+
+
+def test_el_post_de_empresa_no_pasa_por_la_regla_del_sujeto():
+    """Ahí el cashtag ya dice de qué se habla; exigir más sería ruido."""
+    from xcreator.generate import falta_sujeto
+
+    assert not falta_sujeto("$NVDA base case is $305.61.", ())
+
+
+def test_publicar_bloquea_el_macro_que_no_dice_de_que_habla(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path,
+        "A year ago I thought 4.04% was the ceiling. Wrong. 4.95% now.",
+        ticker="", kind="macro")
+    assert any("no dice de qué habla" in p for p in revisar_antes_de_publicar(item))
+
+
+def test_publicar_deja_pasar_el_macro_que_nombra_el_dato(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "The 10-year is at 4.95%, the top of its loaded range.",
+        ticker="", kind="macro")
+    assert revisar_antes_de_publicar(item) == []

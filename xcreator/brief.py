@@ -57,6 +57,9 @@ class Brief:
     as_of: str = ""
     # Dimensión del Cerebro desde la que se mira el ticker (ver cerebro.py).
     angulo: str = "valuacion"
+    # Cómo puede nombrarse el tema cuando no hay empresa. Los briefs de
+    # ticker lo dejan vacío: ahí el cashtag ya dice de qué se habla.
+    sujeto: tuple[str, ...] = ()
 
     @property
     def brief_id(self) -> str:

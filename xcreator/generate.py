@@ -180,6 +180,20 @@ _CIERRES = ".!?\"')]}…"
 _SALTO_ROTO = re.compile(r"[^.!?:\"')\]}…\n]\s*\n\s*[a-z]")
 
 
+def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
+    """True si el post no dice de qué habla.
+
+    En un post de empresa el cashtag ya lo dice. En uno de macro no hay
+    cashtag, y un post que solo encadena porcentajes ("4.04%... 4.95%")
+    deja al lector adivinando qué mide ese número. Basta con que aparezca
+    una de las formas en que ese dato se llama de verdad.
+    """
+    if not alias:
+        return False
+    t = texto.lower()
+    return not any(a.lower() in t for a in alias)
+
+
 def falta_ticker(texto: str, ticker: str) -> list[str]:
     """Qué formas del ticker faltan. Lista vacía = están las dos.
 
@@ -239,6 +253,7 @@ class Draft:
     truncado: bool = False
     idioma_incorrecto: bool = False
     tickers_faltantes: list[str] = field(default_factory=list)
+    sujeto_ausente: bool = False
 
     @property
     def valido(self) -> bool:
@@ -248,6 +263,7 @@ class Draft:
             and not self.truncado
             and not self.idioma_incorrecto
             and not self.tickers_faltantes
+            and not self.sujeto_ausente
         )
 
     @property
@@ -557,6 +573,8 @@ def draft_posts(
                 idioma_incorrecto=not es_ingles(v.text),
                 # Se mira el hilo completo: basta con que aparezcan una vez.
                 tickers_faltantes=falta_ticker("\n".join(piezas), brief.ticker),
+                sujeto_ausente=falta_sujeto("\n".join(piezas),
+                                            getattr(brief, "sujeto", ())),
             )
         )
     return drafts
