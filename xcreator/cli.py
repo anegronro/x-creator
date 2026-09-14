@@ -269,6 +269,7 @@ def responder(
 
     from xcreator.brief import load_briefs
     from xcreator.datos import live_price
+    from xcreator.datos import load_company_names
     from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
 
     q, s = _queue()
@@ -276,11 +277,13 @@ def responder(
         texto = sys.stdin.read()
     mencion = Mencion(autor=autor, texto=texto, url=url)
 
-    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key))
-    rel = encontrar_relevancia(mencion, briefs)
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+                         limit=500)
+    nombres = load_company_names(s.reportes_dir)
+    rel = encontrar_relevancia(mencion, briefs, nombres)
 
     typer.echo(f"Post de {autor} — tickers detectados: "
-               f"{', '.join(sorted(mencion.tickers())) or 'ninguno'}")
+               f"{', '.join(sorted(mencion.tickers(nombres))) or 'ninguno'}")
     if not rel.aporta:
         typer.secho(f"\nNO RESPONDER: {rel.motivo}", fg="yellow", bold=True)
         typer.echo("Abstenerse es el comportamiento correcto: un reply sin "
@@ -339,6 +342,8 @@ def watchlist(
 def vigilar(
     limite: int = typer.Option(5, help="Posts a leer por cuenta (mínimo 5)."),
     encolar: bool = typer.Option(True, help="Guardar los replies en la cola."),
+    detalle: bool = typer.Option(False, help="Mostrar por qué se descarta cada post."),
+    desde_cero: bool = typer.Option(False, help="Ignorar lo ya leído (vuelve a pagar)."),
 ) -> None:
     """Lee las cuentas vigiladas y propone replies donde tengamos datos.
 
@@ -349,6 +354,7 @@ def vigilar(
     """
     from xcreator.brief import load_briefs
     from xcreator.datos import live_price
+    from xcreator.datos import load_company_names
     from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
     from xcreator.watchlist import Watchlist
     from xcreator.xapi import ClienteX, XAPIError, costo_estimado
@@ -377,11 +383,15 @@ def vigilar(
     import json as _json
 
     try:
-        ultimos = _json.loads(s.x_estado_path.read_text())
+        ultimos = {} if desde_cero else _json.loads(s.x_estado_path.read_text())
     except (OSError, ValueError):
         ultimos = {}
 
-    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key))
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+                         limit=500)
+    nombres = load_company_names(s.reportes_dir)
+    typer.echo(f"{len(briefs)} briefs y {len(nombres)} nombres de empresa "
+               f"para emparejar.\n")
     leidos = relevantes = encolados = 0
 
     for cuenta in activas:
@@ -399,8 +409,11 @@ def vigilar(
         for p in posts:
             m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
                         post_id=p.post_id)
-            rel = encontrar_relevancia(m, briefs)
+            rel = encontrar_relevancia(m, briefs, nombres)
             if not rel.aporta:
+                if detalle:
+                    typer.echo(f"  -- {cuenta.handle}: {rel.motivo}")
+                    typer.echo(f"     \"{p.texto[:100]}\"")
                 continue
             relevantes += 1
             if rel.brief:

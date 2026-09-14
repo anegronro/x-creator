@@ -1320,3 +1320,93 @@ def test_el_canje_usa_el_mismo_redirect_que_la_autorizacion(monkeypatch, tmp_pat
     xa.autorizar("cid", xa.AlmacenTokens(tmp_path / "t.json"),
                  callback=cb, abrir_navegador=False)
     assert visto["redirect_uri"] == cb
+
+
+# --- emparejamiento por nombre de empresa ---------------------------------
+
+_NOMBRES = {"oracle": "ORCL", "nvidia": "NVDA", "advanced micro devices": "AMD"}
+
+
+def test_detecta_la_empresa_por_su_NOMBRE():
+    """La gente escribe 'Oracle', no '$ORCL'. Sin esto se perdían posts sobre
+    empresas que sí cubrimos."""
+    from xcreator.replies import Mencion
+
+    m = Mencion("@x", "Oracle Chairman Larry Ellison canceled his plan to sell")
+    assert m.tickers(_NOMBRES) == {"ORCL"}
+
+
+def test_el_nombre_tiene_que_ser_palabra_completa():
+    from xcreator.replies import Mencion
+
+    assert Mencion("@x", "oracular predictions").tickers(_NOMBRES) == set()
+
+
+@pytest.mark.parametrize("titular", [
+    "*SK HYNIX FALLS MORE THAN 5% AFTER AI WARNINGS",
+    "BREAKING: Canada explores membership, per WSJ",
+    "FED CALLS TO SLOW DOWN, CPI MORE THAN EXPECTED",
+])
+def test_los_titulares_en_mayusculas_no_inventan_tickers(titular):
+    """Un titular de zerohedge producía 'tickers' como AFTER, CALLS y SLOW,
+    y el sistema proponía responder sobre empresas que nadie mencionó."""
+    from xcreator.replies import Mencion
+
+    detectados = Mencion("@x", titular).tickers(_NOMBRES)
+    assert not (detectados & {"AFTER", "CALLS", "SLOW", "MORE", "THAN",
+                              "WSJ", "FED", "CPI", "DOWN", "AI"})
+
+
+def test_el_cashtag_sigue_mandando():
+    from xcreator.replies import Mencion
+
+    assert "NVDA" in Mencion("@x", "$NVDA is crowded").tickers(_NOMBRES)
+
+
+def test_nombre_corto_quita_sufijos_societarios():
+    from xcreator.datos import nombre_corto
+
+    assert nombre_corto("Apple Inc.") == "apple"
+    assert nombre_corto("American Airlines Group Inc.") == "american airlines"
+    assert nombre_corto("Airbnb, Inc.") == "airbnb"
+
+
+def test_sin_reportes_no_hay_nombres():
+    from pathlib import Path
+
+    from xcreator.datos import load_company_names
+
+    assert load_company_names(None) == {}
+    assert load_company_names(Path("/no/existe")) == {}
+
+
+# --- límites y citas en replies -------------------------------------------
+
+def test_el_limite_duro_del_reply_es_el_de_X_no_la_preferencia():
+    """240 es preferencia editorial; pasarse de ahí no invalida un reply que
+    X publicaría sin problema."""
+    from xcreator.generate import MAX_CHARS
+    from xcreator.replies import LARGO_PREFERIDO, ReplyDraft
+
+    assert LARGO_PREFERIDO < MAX_CHARS
+    d = ReplyDraft(texto="x" * 252, que_aporta="y", autor="@z")
+    assert d.exceso_caracteres == 0 or d.valido
+
+
+def test_se_puede_citar_una_cifra_del_post_original():
+    """Responder a '4% CPI' citando ese 4% no es inventar: está a la vista."""
+    from xcreator.replies import _numeros_del_texto
+    from xcreator.generate import validate_numbers
+
+    post = "Annual CPI came in at 4% this morning"
+    permitidos = [155.83] + _numeros_del_texto(post)
+    assert validate_numbers("4% CPI isn't pricing power. TGT at $155.83.",
+                            permitidos) == []
+
+
+def test_una_cifra_que_no_esta_en_ningun_lado_sigue_bloqueada():
+    from xcreator.replies import _numeros_del_texto
+    from xcreator.generate import validate_numbers
+
+    permitidos = [155.83] + _numeros_del_texto("CPI at 4%")
+    assert validate_numbers("Margins hit 78.2%.", permitidos)

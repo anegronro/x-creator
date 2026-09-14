@@ -27,12 +27,28 @@ from xcreator.generate import (
     MAX_CHARS, _parece_cortado, es_ingles, validate_numbers,
 )
 
-# Un reply largo rinde peor: se lee en el hilo, no en el timeline.
-MAX_CHARS_REPLY = 240
+# Preferencia editorial, no límite: un reply largo rinde peor porque se lee
+# en el hilo, no en el timeline. Se le pide al modelo, pero pasarse de aquí
+# NO invalida nada — el límite duro es el de X (MAX_CHARS, 280).
+LARGO_PREFERIDO = 240
 
 _CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
-# Sin cashtag, el nombre suelto también cuenta si lo tenemos en cartera.
-_PALABRA = re.compile(r"\b([A-Z]{2,5})\b")
+_SIGLA = re.compile(r"\b([A-Z]{3,5})\b")
+
+# Siglas que aparecen a diario en titulares de mercado y NO son la empresa
+# homónima. Sin esta lista, un titular en mayúsculas de zerohedge produce
+# "tickers" como AFTER, CALLS, SLOW o KOSPI, y el sistema propone responder
+# sobre empresas que nadie mencionó.
+_NO_SON_TICKERS = {
+    "AFTER", "CALLS", "FALL", "FALLS", "SLOW", "MORE", "THAN", "DOWN", "OVER",
+    "INDEX", "KOREA", "SOUTH", "NORTH", "CHINA", "JAPAN", "EURO", "BREAKING",
+    "WSJ", "NBC", "CNBC", "CNN", "BBC", "FOX", "CEO", "CEOS", "CFO", "USA",
+    "GDP", "CPI", "PPI", "PCE", "FED", "FOMC", "ECB", "BOJ", "BOE", "OPEC",
+    "ETF", "ETFS", "IPO", "SEC", "IRS", "FBI", "DOJ", "NYSE", "NASDAQ",
+    "BPS", "YOY", "QOQ", "EPS", "GAAP", "EBIT", "WTI", "OAS", "AI", "HY",
+    "AND", "THE", "FOR", "WITH", "FROM", "THIS", "THAT", "WILL", "SAYS",
+    "NEW", "NOW", "TOP", "BIG", "ALL", "KEY", "WAR", "OIL", "GAS", "JUST",
+}
 
 
 @dataclass
@@ -44,10 +60,47 @@ class Mencion:
     url: str = ""
     post_id: str = ""
 
-    def tickers(self) -> set[str]:
-        """Tickers mencionados: cashtags, y siglas en mayúscula como respaldo."""
-        t = {m.upper() for m in _CASHTAG.findall(self.texto)}
-        return t or {m for m in _PALABRA.findall(self.texto)}
+    def tickers(self, nombres: dict[str, str] | None = None) -> set[str]:
+        """Tickers mencionados, por orden de fiabilidad.
+
+        1. Cashtags ($NVDA): inequívocos.
+        2. Nombres de empresa ("Oracle"), que es como escribe la gente de
+           verdad — sin esto se perdían posts sobre empresas que sí cubrimos.
+        3. Siglas sueltas en mayúscula, solo si no son de las que salen a
+           diario en titulares y no son la empresa.
+        """
+        encontrados = {m.upper() for m in _CASHTAG.findall(self.texto)}
+
+        if nombres:
+            bajo = self.texto.lower()
+            for nombre, ticker in nombres.items():
+                if re.search(rf"\b{re.escape(nombre)}\b", bajo):
+                    encontrados.add(ticker)
+
+        for sigla in _SIGLA.findall(self.texto):
+            if sigla not in _NO_SON_TICKERS:
+                encontrados.add(sigla)
+        return encontrados
+
+
+_NUM_EN_TEXTO = re.compile(r"\d[\d,]*(?:\.\d+)?")
+
+
+def _numeros_del_texto(texto: str) -> list[float]:
+    """Las cifras que aparecen en el post ajeno, como floats.
+
+    Se añaden a las permitidas: responder citando un dato del post original
+    no es inventar, y bloquearlo obliga a escribir replies que no pueden
+    referirse a lo que contestan.
+    """
+    out: list[float] = []
+    for m in _NUM_EN_TEXTO.finditer(texto):
+        try:
+            v = float(m.group(0).replace(",", ""))
+        except ValueError:
+            continue
+        out.extend([v, v / 100])   # "4%" en el post puede citarse como 0.04
+    return out
 
 
 @dataclass
@@ -63,7 +116,8 @@ class Relevancia:
         return self.brief is not None
 
 
-def encontrar_relevancia(mencion: Mencion, briefs: list[Brief]) -> Relevancia:
+def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
+                         nombres: dict[str, str] | None = None) -> Relevancia:
     """Empareja un post ajeno con un brief nuestro. Determinista y previo al modelo.
 
     Devolver `Relevancia(None, ...)` es un resultado legítimo y frecuente: la
@@ -72,7 +126,7 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief]) -> Relevancia:
     """
     if not mencion.texto.strip():
         return Relevancia(None, motivo="el post no trae texto")
-    tickers = mencion.tickers()
+    tickers = mencion.tickers(nombres)
     if not tickers:
         return Relevancia(
             None, motivo="el post no menciona ninguna empresa que cubramos")
@@ -211,7 +265,8 @@ def draft_reply(
         f"POST AL QUE RESPONDES (de {mencion.autor}):\n"
         f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n"
         f"{brief.render()}\n\n"
-        f"Escribe UN reply de máximo {MAX_CHARS_REPLY} caracteres, en inglés, "
+        f"Escribe UN reply de máximo {LARGO_PREFERIDO} caracteres (nunca más "
+        f"de {MAX_CHARS}), en inglés, "
         f"que añada un dato duro de arriba a esta conversación. Si nada del "
         f"brief se relaciona de verdad con lo que dice el post, pon "
         f"aporta_algo=false y no escribas nada."
@@ -241,13 +296,17 @@ def draft_reply(
         )
 
     texto = parsed.texto.strip()
+    # Citar una cifra del post al que respondes es legítimo y verificable:
+    # está ahí, a la vista de cualquiera. Lo que no puede es inventarla.
+    permitidos = brief.allowed_numbers() + _numeros_del_texto(mencion.texto)
     return ReplyDraft(
         texto=texto,
         que_aporta=parsed.que_aporta,
         autor=mencion.autor, url=mencion.url, ticker=relevancia.ticker,
         brief_id=brief.brief_id, model=modelo_usado,
-        numeros_no_justificados=validate_numbers(texto, brief.allowed_numbers()),
-        exceso_caracteres=max(0, len(texto) - MAX_CHARS_REPLY),
+        numeros_no_justificados=validate_numbers(texto, permitidos),
+        # Contra el límite REAL de X, no contra la preferencia.
+        exceso_caracteres=max(0, len(texto) - MAX_CHARS),
         truncado=(getattr(resp, "stop_reason", None) == "max_tokens"
                   or _parece_cortado(texto)),
         idioma_incorrecto=not es_ingles(texto),
