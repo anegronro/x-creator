@@ -1452,3 +1452,24 @@ def test_un_acuse_caducado_no_pierde_las_demas_aprobaciones(tmp_path):
         pytest.fail("un acuse caducado no debe abortar el procesamiento")
     assert q.get(a.id).estado == "aprobado"
     assert q.get(b.id).estado == "aprobado"
+
+
+def test_los_comandos_de_typer_no_se_llaman_entre_si_sin_argumentos():
+    """Llamar a un comando de Typer como función normal le pasa los objetos
+    OptionInfo en vez de los valores por defecto. `ciclo` hacía eso con
+    `enviar` y reventaba con un TypeError al cortar la lista."""
+    import inspect
+
+    from xcreator import cli
+
+    fuente = inspect.getsource(cli.tg_ciclo)
+    assert "tg_enviar(limite=" in fuente, "ciclo debe pasar el valor explícito"
+
+
+def test_enviar_pendientes_exige_un_limite_numerico(tmp_path):
+    from xcreator.telegram import enviar_pendientes
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("uno"))
+    with pytest.raises(TypeError):
+        enviar_pendientes(q, FakeBot(), limite=object())

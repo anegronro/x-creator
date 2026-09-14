@@ -5,7 +5,11 @@
 # Uso: cron.sh <telegram|vigilar|redactar>
 set -uo pipefail
 
-RAIZ="$HOME/Proyectos/x-creator"
+# La raíz se deriva de DÓNDE ESTÁ este script, nunca de $HOME: en la Mac el
+# proyecto vive en ~/Proyectos/x-creator y en el VPS en /root/x-creator.
+# Hardcodear la ruta de la Mac hizo que el cron del VPS fallara en silencio
+# once horas, escribiendo sus errores en un directorio fantasma.
+RAIZ="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 XC="$RAIZ/.venv/bin/xc"
 LOG="$RAIZ/Contenido/cron.log"
 
@@ -18,24 +22,35 @@ fi
 
 registrar() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
 
+if [ ! -x "$XC" ]; then
+  registrar "FATAL: no existe $XC — ¿se desplegó el proyecto en esta máquina?"
+  echo "FATAL: no existe $XC" >&2
+  exit 1
+fi
+
 case "${1:-}" in
   telegram)
     # Recoge los botones que tocaste y manda los pendientes nuevos.
     # No toca la API de X: es gratis y puede correr seguido.
-    salida=$("$XC" telegram ciclo 2>&1)
+    salida=$("$XC" telegram ciclo 2>&1); codigo=$?
     # Solo se registra cuando pasa algo: si no, el log es 288 líneas diarias
     # de "sin novedades" y deja de leerse.
     if ! echo "$salida" | grep -q "Sin novedades." || echo "$salida" | grep -qi "error\|falta"; then
       registrar "telegram: $salida"
     fi
+    exit $codigo
     ;;
   vigilar)
     # Lee las cuentas grandes y propone replies. Esto SÍ cuesta (~$0.17).
-    registrar "vigilar: $("$XC" vigilar --limite 5 2>&1 | tail -3)"
+    salida=$("$XC" vigilar --limite 5 2>&1); codigo=$?
+    registrar "vigilar: $(echo "$salida" | tail -3)"
+    exit $codigo
     ;;
   redactar)
     # Un post propio al día, sobre el tema con más tensión.
-    registrar "redactar: $("$XC" redactar --auto --n 2 2>&1 | tail -4)"
+    salida=$("$XC" redactar --auto --n 2 2>&1); codigo=$?
+    registrar "redactar: $(echo "$salida" | tail -4)"
+    exit $codigo
     ;;
   *)
     echo "uso: cron.sh <telegram|vigilar|redactar>" >&2

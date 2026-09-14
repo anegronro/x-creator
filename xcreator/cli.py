@@ -711,7 +711,12 @@ def tg_escuchar() -> None:
 
 
 @tg.command("ciclo")
-def tg_ciclo() -> None:
+def tg_ciclo(
+    limite: int = typer.Option(10, help="Máximo de borradores a enviar."),
+) -> None:
     """escuchar + enviar en una pasada. Es lo que va en el cron."""
+    # Los valores van EXPLÍCITOS: llamar a un comando de Typer como función
+    # normal le pasa los objetos `OptionInfo` en vez de los valores por
+    # defecto, y el comando revienta con un TypeError opaco.
     tg_escuchar()
-    tg_enviar()
+    tg_enviar(limite=limite)
