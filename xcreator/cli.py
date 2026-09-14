@@ -116,10 +116,15 @@ def redactar(
     csv: Path = typer.Option(None, help="Analytics CSV para aplicar estilo medido."),
     n: int = typer.Option(3, help="Variantes a generar."),
     encolar: bool = typer.Option(True, help="Guardar en la cola de aprobación."),
+    auto: bool = typer.Option(
+        False,
+        help="Elegir solo el tema con más tensión y rotar el ángulo por día.",
+    ),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
-    from xcreator.datos import live_price
     from xcreator.brief import load_briefs
+    from xcreator.cerebro import ANGULOS, disponible
+    from xcreator.datos import live_price
     from xcreator.generate import draft_posts
 
     q, s = _queue()
@@ -139,21 +144,38 @@ def redactar(
                     "los datos de acciones.", fg="red", err=True)
         raise typer.Exit(1)
     briefs = load_briefs(
-        s.reportes_dir, lambda t: live_price(t, s.fmp_api_key)
+        s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+        limit=500 if auto else 10,
     )
-    if ticker:
+    if ticker and not auto:
         briefs = [b for b in briefs if b.ticker.upper() == ticker.upper()]
     if not briefs:
         typer.secho("No hay predicciones en WBJ_REPORTES_DIR. Corre "
                     "`wbj analyze <TICKER>` en el motor de acciones primero.", fg="red", err=True)
         raise typer.Exit(1)
 
-    from xcreator.cerebro import ANGULOS, disponible
-
     if angulo not in ANGULOS:
         typer.secho(f"Ángulo desconocido: {angulo}. Opciones: "
                     f"{', '.join(ANGULOS)}", fg="red", err=True)
         raise typer.Exit(1)
+
+    if auto:
+        from datetime import date
+
+        from xcreator.temas import ranking
+
+        r = ranking(briefs)
+        if not r:
+            typer.secho("Ningún brief tiene tensión hoy. Publicar por "
+                        "publicar es peor que no publicar.", fg="yellow")
+            raise typer.Exit(0)
+        briefs = [r[0].brief]
+        # Rotar el ángulo por día del año: el mismo ticker mirado desde
+        # ángulos distintos es contenido distinto, no repetido.
+        claves = list(ANGULOS)
+        angulo = claves[date.today().timetuple().tm_yday % len(claves)]
+        typer.echo(f"Auto: {r[0].ticker} ({r[0].puntos:.0f} pts) — "
+                   f"{r[0].razones[0] if r[0].razones else ''}")
 
     brief = briefs[0]
     brief.angulo = angulo

@@ -176,6 +176,29 @@ Las credenciales son dos y distintas: el **bearer token** (app-only) solo
 lee; publicar necesita **OAuth 2.0 de usuario**, que autorizas tú en tu
 navegador. Aquí nunca se ve ni se pide una contraseña.
 
+## Automatización (cron)
+
+```bash
+scripts/cron.sh telegram    # cada 5 min — recoge botones, manda pendientes
+scripts/cron.sh vigilar     # 9:00, 13:00, 16:00 L-V — lee cuentas, propone replies
+scripts/cron.sh redactar    # 8:30 L-V — un post propio sobre el tema con más tensión
+```
+
+**Publicar NO está en el cron, a propósito.** Es la única acción irreversible
+y sigue necesitando `xc publicar --no-en-seco` a mano. Aprobar en Telegram
+deja el borrador listo; publicarlo es una decisión aparte.
+
+Costo del cron: ~$11/mes de la API de X (tres pasadas diarias de `vigilar`)
+más unos centavos de Anthropic. `telegram` es gratis. Para abaratar, bajar a
+dos pasadas o quitar de la watchlist las cuentas de macro, que casi nunca
+mencionan tickers que cubrimos.
+
+El log vive en `Contenido/cron.log` y solo registra cuando pasa algo: un log
+que dice "sin novedades" 288 veces al día deja de leerse.
+
+**Ojo con la Mac dormida:** el cron no corre si la Mac está suspendida. Para
+24/7 real hay que moverlo a un VPS.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).
