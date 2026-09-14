@@ -92,6 +92,12 @@ def _post(token: str, payload: dict, timeout: float = 30.0) -> dict:
                             "scope tweet.write? Corre `xc x-auth`.")
     if r.status_code == 403:
         raise PublicarError(f"403: X rechazó el post — {r.text[:200]}")
+    if r.status_code == 402:
+        raise PublicarError(
+            "Sin créditos en X (402). La autorización está bien; falta "
+            f"recargar en console.x.com. Publicar un post cuesta "
+            f"${COSTO_POST}."
+        )
     if r.status_code == 429:
         raise PublicarError("429: límite de publicación alcanzado.")
     if r.status_code >= 400:

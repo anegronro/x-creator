@@ -1222,3 +1222,28 @@ def test_los_tokens_se_guardan_con_permisos_restringidos(tmp_path):
     p = tmp_path / "t.json"
     AlmacenTokens(p).guardar(Tokens("secreto", "r", time.time() + 60))
     assert oct(p.stat().st_mode)[-3:] == "600"
+
+
+def test_402_se_distingue_de_401(monkeypatch, tmp_path):
+    """402 significa token bueno y cuenta sin saldo. Confundirlo con un 401
+    manda a perseguir credenciales que están bien."""
+    import httpx
+
+    from xcreator.xapi import ClienteX, XAPIError
+
+    c = ClienteX("token", tmp_path / "ids.json")
+    monkeypatch.setattr(httpx, "get", lambda *a, **kw: httpx.Response(
+        402, json={"detail": "credits depleted"}))
+    with pytest.raises(XAPIError, match="Sin créditos"):
+        c._get("/users/by/username/x")
+
+
+def test_402_al_publicar_tambien_es_claro(monkeypatch):
+    import httpx
+
+    from xcreator.publicar import PublicarError, _post
+
+    monkeypatch.setattr(httpx, "post", lambda *a, **kw: httpx.Response(
+        402, json={"detail": "credits depleted"}))
+    with pytest.raises(PublicarError, match="Sin créditos"):
+        _post("tok", {"text": "hola"})

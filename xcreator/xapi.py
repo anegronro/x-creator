@@ -84,6 +84,14 @@ class ClienteX:
             raise XAPIError(f"{ruta}: sin conexión ({type(e).__name__})") from e
         if r.status_code == 401:
             raise XAPIError("El bearer token no sirve (401).")
+        if r.status_code == 402:
+            # 402 no es un fallo de credenciales: el token está bien y la
+            # cuenta se quedó sin saldo. Distinguirlo del 401 ahorra una
+            # persecución inútil del token.
+            raise XAPIError(
+                "Sin créditos en X (402). El token es válido; hay que "
+                "recargar en console.x.com. Leer un post cuesta $0.005."
+            )
         if r.status_code == 429:
             raise XAPIError("Rate limit de X (429). Espera antes de reintentar.")
         if r.status_code >= 400:
