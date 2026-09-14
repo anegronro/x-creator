@@ -274,9 +274,11 @@ def mensaje_para_copiar(item) -> str:
     if item.url_origen:
         partes += [
             "",
-            f"2. Mantén pulsado este enlace y elige "
-            f"<b>Abrir en Safari</b> (el navegador de Telegram no lleva tu "
-            f"sesión de X):",
+            "2. <b>Mantén pulsado</b> el enlace y elige <b>Abrir en Safari</b>.",
+            "   (Si lo abres con un toque normal, cae en el navegador interno "
+            "de Telegram, que no lleva tu sesión de X y te pide login. Desde "
+            "ahí, la brújula de abajo a la derecha también sirve.)",
+            "",
             _escapar(item.url_origen),
         ]
     return "\n".join(partes)

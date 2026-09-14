@@ -1822,6 +1822,7 @@ def test_el_mensaje_explica_como_abrir_el_post(tmp_path):
     q.update(i.id, responde_a="@x", url_origen="https://x.com/x/status/9")
     m = mensaje_para_copiar(q.get(i.id))
     assert "Abrir en Safari" in m and "no lleva tu sesión" in m
+    assert "Mantén pulsado" in m
 
 
 def test_el_intent_usa_el_texto_EDITADO(tmp_path):
