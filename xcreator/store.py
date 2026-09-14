@@ -157,6 +157,22 @@ class Queue:
             item_id, estado="publicado", publicado_en=_now(), post_id=post_id,
         )
 
+    def minutos_desde_ultima_publicacion(self) -> float | None:
+        """Minutos desde el último post publicado, o None si no hay ninguno."""
+        from datetime import datetime, timezone
+
+        marcas = [i.publicado_en for i in self.load()
+                  if i.estado == "publicado" and i.publicado_en]
+        if not marcas:
+            return None
+        try:
+            ultima = datetime.fromisoformat(max(marcas))
+        except ValueError:
+            return None
+        if ultima.tzinfo is None:
+            ultima = ultima.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - ultima).total_seconds() / 60
+
     def ultimo_uso_por_ticker(self) -> dict[str, str]:
         """{ticker: fecha ISO del borrador más reciente que lo usó}.
 

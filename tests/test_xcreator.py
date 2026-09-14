@@ -1640,3 +1640,49 @@ def test_por_defecto_telegram_esta_activo():
     s = SimpleNamespace(telegram_bot_token="8123456789:" + "x" * 31,
                         telegram_chat_id="123")
     assert bot_desde(s).chat_id == "123"
+
+
+# --- espaciado de publicación ---------------------------------------------
+
+def test_sabe_cuanto_hace_del_ultimo_post(tmp_path):
+    from datetime import datetime, timedelta, timezone
+
+    q = Queue(tmp_path / "cola.jsonl")
+    assert q.minutos_desde_ultima_publicacion() is None
+
+    i = q.add(_draft("uno"))
+    hace_30 = datetime.now(timezone.utc) - timedelta(minutes=30)
+    q.update(i.id, estado="publicado", publicado_en=hace_30.isoformat())
+    assert 29 <= q.minutos_desde_ultima_publicacion() <= 31
+
+
+def test_solo_cuenta_lo_publicado(tmp_path):
+    """Un aprobado sin publicar no bloquea el siguiente."""
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.aprobar(i.id)
+    assert q.minutos_desde_ultima_publicacion() is None
+
+
+def test_una_marca_corrupta_no_rompe_el_espaciado(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.update(i.id, estado="publicado", publicado_en="no-es-una-fecha")
+    assert q.minutos_desde_ultima_publicacion() is None
+
+
+def test_un_borrador_invalido_no_consume_el_cupo(tmp_path):
+    """Con el máximo aplicado antes del filtro, un borrador impublicable se
+    llevaba el cupo de la pasada y no salía nada. Mismo error que ya costó
+    que Telegram dejara de enviar."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    malo = q.add(_draft("x" * 400))          # se pasa de largo
+    bueno = q.add(_draft("A clean English post about $NVDA and NVDA."))
+    for i in (malo, bueno):
+        q.aprobar(i.id)
+
+    aprobados = [i for i in q.load() if i.estado == "aprobado"]
+    publicables = [i for i in aprobados if not revisar_antes_de_publicar(i)]
+    assert [i.id for i in publicables[:1]] == [bueno.id]

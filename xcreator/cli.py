@@ -526,6 +526,9 @@ def publicar(
     item_id: str = typer.Option("", help="Publicar solo este. Vacío = todos los aprobados."),
     en_seco: bool = typer.Option(True, help="Sin --no-en-seco no se publica nada."),
     permitir_link: bool = typer.Option(False, help="Permitir links (cuestan 13x)."),
+    maximo: int = typer.Option(0, help="Máximo por pasada (0 = sin límite)."),
+    espaciado: int = typer.Option(
+        0, help="Minutos mínimos desde el último post publicado."),
 ) -> None:
     """Publica en X lo que YA aprobaste. En seco por defecto.
 
@@ -546,6 +549,34 @@ def publicar(
                    "`xc aprobar <id>`.")
         return
 
+    # Espaciar es parte de publicar bien: una tanda de posts seguidos se lee
+    # como automatizada y los posts compiten entre sí por el mismo lector.
+    if espaciado and not item_id:
+        desde = q.minutos_desde_ultima_publicacion()
+        if desde is not None and desde < espaciado:
+            typer.echo(f"Toca esperar: el último post salió hace "
+                       f"{desde:.0f} min y el espaciado es de {espaciado} min.")
+            return
+    # El máximo se aplica DESPUÉS de descartar lo impublicable. Al revés, un
+    # borrador inválido consume el cupo y la pasada no publica nada — el
+    # mismo error que ya costó que Telegram dejara de enviar borradores.
+    bloqueados = [(i, revisar_antes_de_publicar(i, permitir_link=permitir_link))
+                  for i in items]
+    publicables = [i for i, problemas in bloqueados if not problemas]
+    if maximo:
+        publicables = publicables[:maximo]
+    # Los problemas se siguen mostrando: callarlos es dejar borradores
+    # muertos en la cola sin que nadie sepa por qué.
+    for i, problemas in bloqueados:
+        if problemas:
+            typer.secho(f"[NO] {i.id} {i.ticker}", fg="red")
+            for p in problemas:
+                typer.echo(f"     {p}")
+    items = publicables
+    if not items:
+        typer.echo("Nada publicable en esta pasada.")
+        return
+
     total = sum(costo([i.texto_final, *i.hilo]) for i in items)
     typer.echo(f"{len(items)} publicación(es) — costo estimado ${total:.3f}\n")
 
@@ -561,12 +592,6 @@ def publicar(
 
     publicados = 0
     for i in items:
-        problemas = revisar_antes_de_publicar(i, permitir_link=permitir_link)
-        if problemas:
-            typer.secho(f"[NO] {i.id} {i.ticker}", fg="red")
-            for p in problemas:
-                typer.echo(f"     {p}")
-            continue
         if en_seco:
             con_img = " (+gráfico)" if i.imagen else ""
             typer.secho(f"[seco] {i.id} {i.ticker}{con_img} — se publicaría:",
