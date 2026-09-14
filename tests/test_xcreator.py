@@ -2235,3 +2235,91 @@ def test_reparacion_por_modelo_rechaza_lo_que_sigue_sin_ticker(tmp_path):
     orig = "$AAPL trades at 44.50x earnings today."
     assert _reparar_ticker(_C("Apple trades at 44.50x."), orig, "AAPL",
                            "m", [44.50]) == orig
+
+
+def test_el_desempate_rota_entre_dias():
+    """Empatados a puntos, un sort estable daba SIEMPRE el mismo primero."""
+    from datetime import date
+
+    from xcreator.temas import ranking
+
+    empatados = [_brief_con(precio_hoy=150.0, ticker=t)
+                 for t in ("AAA", "BBB", "CCC", "DDD", "EEE", "FFF")]
+    cabezas = {ranking(empatados, hoy=date(2026, 9, d))[0].ticker
+               for d in range(1, 15)}
+    assert len(cabezas) > 1, "el mismo ticker gana todos los días"
+
+
+def test_el_desempate_es_estable_dentro_del_mismo_dia():
+    """Rotar no puede significar aleatorio: el mismo día da el mismo orden."""
+    from datetime import date
+
+    from xcreator.temas import ranking
+
+    empatados = [_brief_con(precio_hoy=150.0, ticker=t)
+                 for t in ("AAA", "BBB", "CCC", "DDD")]
+    hoy = date(2026, 9, 14)
+    assert ([t.ticker for t in ranking(empatados, hoy=hoy)]
+            == [t.ticker for t in ranking(empatados, hoy=hoy)])
+
+
+def test_el_desempate_no_pisa_los_puntos():
+    """La tensión manda: el desempate solo ordena lo que ya empató."""
+    from datetime import date
+
+    from xcreator.temas import ranking
+
+    fuerte = _brief_con(precio_hoy=150.0, ticker="ZZZZ")   # por debajo del bear
+    flojo = _brief_con(precio_hoy=280.0, ticker="AAAA")
+    r = ranking([flojo, fuerte], hoy=date(2026, 9, 14))
+    assert r[0].ticker == "ZZZZ"
+
+
+def _settings_min(tmp_path):
+    """Settings sin Cerebro ni reportes: los tests no tocan disco externo."""
+    from xcreator.config import Settings
+
+    return Settings(reportes_dir=tmp_path, cerebro_dir=None)
+
+
+def test_auto_encola_un_post_por_ticker_no_varios_del_mismo(tmp_path, monkeypatch):
+    """`--auto` pedía n variantes de UN ticker: con publicación automática,
+    eso son n posts seguidos de la misma empresa."""
+    import xcreator.generate as G
+    from xcreator.cli import _redactar_planes
+    from xcreator.temas import evaluar
+
+    briefs = {t: _brief_con(precio_hoy=150.0, ticker=t)
+              for t in ("AAA", "BBB", "CCC")}
+    monkeypatch.setattr(
+        G, "draft_posts",
+        lambda brief, s, **kw: [
+            _draft(f"${brief.ticker} moves. {brief.ticker} holds.",
+                   ticker=brief.ticker) for _ in range(2)])
+    q = Queue(tmp_path / "cola.jsonl")
+    planes = [(b, a, evaluar(b))
+              for (b, a) in zip(briefs.values(),
+                                ("negocio", "finanzas", "mercado"))]
+    _redactar_planes(planes, q, _settings_min(tmp_path),
+                     lecciones=[], encolar=True)
+    assert sorted(i.ticker for i in q.load()) == ["AAA", "BBB", "CCC"]
+
+
+def test_auto_se_queda_con_la_variante_valida(tmp_path, monkeypatch):
+    """La segunda variante es el repuesto de la primera, no un segundo post."""
+    import xcreator.generate as G
+    from xcreator.cli import _redactar_planes
+    from xcreator.temas import evaluar
+
+    b = _brief_con(precio_hoy=150.0, ticker="AAA")
+    malo = _draft("AAA moves without the cashtag.", ticker="AAA",
+                  tickers_faltantes=["$AAA"])
+    bueno = _draft("$AAA moves. AAA holds.", ticker="AAA")
+    monkeypatch.setattr(G, "draft_posts", lambda brief, s, **kw: [malo, bueno])
+    q = Queue(tmp_path / "cola.jsonl")
+    _redactar_planes([(b, "negocio", evaluar(b))], q, _settings_min(tmp_path),
+                     lecciones=[], encolar=True)
+    items = q.load()
+    assert len(items) == 1
+    assert items[0].estado == "programado"
+    assert "$AAA" in items[0].texto_final

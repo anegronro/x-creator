@@ -114,11 +114,11 @@ def redactar(
         help="Dimensión del Cerebro: negocio|finanzas|mercado|tecnico|riesgo|valuacion",
     ),
     csv: Path = typer.Option(None, help="Analytics CSV para aplicar estilo medido."),
-    n: int = typer.Option(3, help="Variantes a generar."),
+    n: int = typer.Option(3, help="Variantes a generar. Con --auto: cuántos tickers distintos."),
     encolar: bool = typer.Option(True, help="Guardar en la cola de aprobación."),
     auto: bool = typer.Option(
         False,
-        help="Elegir solo el tema con más tensión y rotar el ángulo por día.",
+        help="Un post por ticker: los `n` temas con más tensión, un ángulo distinto cada uno.",
     ),
     macro: bool = typer.Option(
         False, help="Post de mercado/economía, sin empresa concreta."),
@@ -177,13 +177,28 @@ def redactar(
             typer.secho("Ningún brief tiene tensión hoy. Publicar por "
                         "publicar es peor que no publicar.", fg="yellow")
             raise typer.Exit(0)
-        briefs = [r[0].brief]
-        # Rotar el ángulo por día del año: el mismo ticker mirado desde
-        # ángulos distintos es contenido distinto, no repetido.
+        # Un ticker por post, no `n` posts del mismo ticker. Antes `--auto`
+        # cogía solo la cabeza del ranking y pedía n variantes de ESA empresa;
+        # con la aprobación automática, eso son n posts seguidos de lo mismo.
+        elegidos, vistos = [], set()
+        for t in r:
+            if t.ticker.upper() in vistos:
+                continue
+            vistos.add(t.ticker.upper())
+            elegidos.append(t)
+            if len(elegidos) >= max(1, n):
+                break
+        # Cada uno con su propio ángulo: tres empresas miradas con la misma
+        # lente vuelven a sonar a plantilla.
         claves = list(ANGULOS)
-        angulo = claves[date.today().timetuple().tm_yday % len(claves)]
-        typer.echo(f"Auto: {r[0].ticker} ({r[0].puntos:.0f} pts) — "
-                   f"{r[0].razones[0] if r[0].razones else ''}")
+        base = date.today().timetuple().tm_yday
+        planes = [(t.brief, claves[(base + i) % len(claves)], t)
+                  for i, t in enumerate(elegidos)]
+        typer.echo("Auto: " + ", ".join(
+            f"{t.ticker} ({t.puntos:.0f} pts, {ang})"
+            for _, ang, t in planes) + "\n")
+        _redactar_planes(planes, q, s, lecciones=lecciones, encolar=encolar)
+        return
 
     brief = briefs[0]
     brief.angulo = angulo
@@ -202,37 +217,78 @@ def redactar(
         raise typer.Exit(1)
 
     for d in drafts:
-        estado = "OK" if d.valido else "REVISAR"
-        color = "green" if d.valido else "yellow"
-        typer.secho(f"[{estado}] {d.approach}", fg=color, bold=True)
-        typer.echo(f"  {d.text}  ({len(d.text)} c)")
-        for i, t in enumerate(d.thread, 2):
-            typer.echo(f"  {i}/ {t}  ({len(t)} c)")
-        typer.echo(f"  gancho: {d.reply_hook}")
-        if d.numeros_no_justificados:
-            typer.secho(f"  CIFRAS SIN FUENTE: {d.numeros_no_justificados}",
-                        fg="red")
-        if d.exceso_caracteres:
-            typer.secho(f"  se pasa por {d.exceso_caracteres} caracteres", fg="red")
-        if d.truncado:
-            typer.secho("  TEXTO CORTADO a media frase — no publicar así", fg="red")
-        if d.idioma_incorrecto:
-            typer.secho("  NO ESTÁ EN INGLÉS — el contenido siempre va en inglés",
-                        fg="red")
-        if d.tickers_faltantes:
-            typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
-                        fg="red")
-        if encolar:
-            # Nace PROGRAMADO: sale solo pasada la ventana de veto. Lo que
-            # antes hacía falta para publicar (aprobar) ahora hace falta para
-            # parar, que es lo que Angel pidió.
-            item = q.add(d, estado="programado" if d.valido else "pendiente")
-            ruta = _grafico_para(brief, s, item.id)
-            if ruta:
-                q.update(item.id, imagen=str(ruta))
-                typer.echo(f"  gráfico: {ruta.name}")
-            typer.echo(f"  -> cola id {item.id}")
-        typer.echo("")
+        _mostrar_y_encolar(d, brief, q, s, encolar=encolar)
+
+
+def _mostrar_y_encolar(d, brief, q, s, *, encolar: bool) -> None:
+    """Pinta el borrador con sus avisos y, si toca, lo deja en la cola."""
+    estado = "OK" if d.valido else "REVISAR"
+    color = "green" if d.valido else "yellow"
+    typer.secho(f"[{estado}] {d.approach}", fg=color, bold=True)
+    typer.echo(f"  {d.text}  ({len(d.text)} c)")
+    for i, t in enumerate(d.thread, 2):
+        typer.echo(f"  {i}/ {t}  ({len(t)} c)")
+    typer.echo(f"  gancho: {d.reply_hook}")
+    if d.numeros_no_justificados:
+        typer.secho(f"  CIFRAS SIN FUENTE: {d.numeros_no_justificados}", fg="red")
+    if d.exceso_caracteres:
+        typer.secho(f"  se pasa por {d.exceso_caracteres} caracteres", fg="red")
+    if d.truncado:
+        typer.secho("  TEXTO CORTADO a media frase — no publicar así", fg="red")
+    if d.idioma_incorrecto:
+        typer.secho("  NO ESTÁ EN INGLÉS — el contenido siempre va en inglés",
+                    fg="red")
+    if d.tickers_faltantes:
+        typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
+                    fg="red")
+    if encolar:
+        # Nace PROGRAMADO: sale solo pasada la ventana de veto. Lo que antes
+        # hacía falta para publicar (aprobar) ahora hace falta para parar, que
+        # es lo que Angel pidió.
+        item = q.add(d, estado="programado" if d.valido else "pendiente")
+        ruta = _grafico_para(brief, s, item.id)
+        if ruta:
+            q.update(item.id, imagen=str(ruta))
+            typer.echo(f"  gráfico: {ruta.name}")
+        typer.echo(f"  -> cola id {item.id}")
+    typer.echo("")
+
+
+def _redactar_planes(planes, q, s, *, lecciones, encolar: bool) -> None:
+    """Un post por ticker: redacta cada plan y encola SOLO el mejor de cada uno.
+
+    Se piden dos variantes y se queda una. La segunda no es para publicar
+    las dos — es el repuesto de la primera: si sale con una cifra inventada,
+    cortada o sin el ticker, publicar igual sería peor que el silencio, y
+    quedarse sin post ese día también.
+    """
+    from xcreator.cerebro import ANGULOS, disponible
+    from xcreator.generate import draft_posts
+
+    if not disponible(s.cerebro_dir):
+        typer.secho("Sin Cerebro (falta WBJ_CEREBRO_DIR): el contenido saldrá "
+                    "más genérico.", fg="yellow")
+    hubo = False
+    for brief, angulo, tema in planes:
+        brief.angulo = angulo
+        a = ANGULOS[angulo]
+        typer.secho(f"── {tema.ticker} · {a.titulo}", fg="cyan", bold=True)
+        if tema.razones:
+            typer.echo(f"   {tema.razones[0]}")
+        drafts = draft_posts(brief, s, lecciones=lecciones, n=2)
+        if not drafts:
+            typer.secho(f"   sin borradores para {tema.ticker}", fg="red",
+                        err=True)
+            continue
+        hubo = True
+        # El primero válido; si ninguno lo es, el primero a secas — así entra
+        # como `pendiente` y queda a la vista en vez de desaparecer.
+        elegido = next((d for d in drafts if d.valido), drafts[0])
+        _mostrar_y_encolar(elegido, brief, q, s, encolar=encolar)
+    if not hubo:
+        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+                    fg="red", err=True)
+        raise typer.Exit(1)
 
 
 def _analizar_cuenta(csv: Path) -> None:

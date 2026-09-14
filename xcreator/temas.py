@@ -11,6 +11,8 @@ reporte los muestra, para que se pueda discutir por qué un tema subió.
 
 from __future__ import annotations
 
+import hashlib
+
 from dataclasses import dataclass, field
 
 from datetime import date, timedelta
@@ -117,6 +119,11 @@ def _penalizar(tema: Tema, ultimo_uso: dict[str, str], hoy: date) -> None:
     tema.razones.append(f"PERO ya salió {cuando} (-{castigo:.1f})")
 
 
+def _desempate(ticker: str, sello: str) -> str:
+    """Orden estable dentro del día, distinto entre días."""
+    return hashlib.sha1(f"{ticker.upper()}|{sello}".encode()).hexdigest()
+
+
 def ranking(briefs: list[Brief], *, minimo: float = 1.0,
             ultimo_uso: dict[str, str] | None = None,
             hoy: date | None = None) -> list[Tema]:
@@ -132,4 +139,13 @@ def ranking(briefs: list[Brief], *, minimo: float = 1.0,
         for t in temas:
             _penalizar(t, ultimo_uso, hoy)
     con_historia = [t for t in temas if t.puntos >= minimo]
-    return sorted(con_historia, key=lambda t: t.puntos, reverse=True)
+    # El desempate rota con el día. Con seis tickers empatados a 3 puntos, un
+    # sort estable devolvía SIEMPRE el mismo primero — y como `--auto` coge la
+    # cabeza de la lista, ese ganaba todos los días hasta que la penalización
+    # lo sacaba. Sigue siendo determinista (mismo día, mismo orden: se puede
+    # reproducir y testear), pero no es el mismo orden mañana.
+    sello = hoy.isoformat()
+    return sorted(
+        con_historia,
+        key=lambda t: (-t.puntos, _desempate(t.ticker, sello)),
+    )
