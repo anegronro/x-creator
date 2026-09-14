@@ -594,7 +594,12 @@ def vigilar(
             ultimos[cuenta.normalizado()] = posts[0].post_id
 
         for p in posts:
-            if encolados >= cupo:
+            # El cupo se recuenta contra la cola en cada vuelta, no solo al
+            # arrancar. Leerlo una vez bastaba mientras hubiera un único
+            # proceso; con dos corridas solapadas, cada una se gastaba el
+            # cupo entero y el tope de 3 acabó dejando pasar 19. El cerrojo
+            # de cron.sh evita el solape, y esto lo hace exacto igual.
+            if q.replies_de_hoy() >= s.replies_por_dia:
                 break
             # Solo conversaciones vivas: a las pocas horas responder es
             # hablarle a un hilo que ya nadie mira.

@@ -2532,3 +2532,32 @@ def test_el_post_de_empresa_si_puede_citar_su_propia_llamada(tmp_path):
         tmp_path, "Our bear case on $NVDA was $194.56. NVDA never touched it.",
         ticker="NVDA", kind="thesis_check")
     assert revisar_antes_de_publicar(item) == []
+
+
+def test_el_cupo_de_replies_cuenta_contra_la_cola_no_contra_la_pasada(tmp_path):
+    """Leer el cupo una sola vez al arrancar bastaba con un proceso.
+
+    Con dos corridas de `vigilar` solapadas —pasa cuando una tarda más de
+    los 15 minutos del cron— cada una se gastaba el cupo entero: con el
+    tope en 3 se propusieron 19 replies en un día.
+    """
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    for _ in range(3):
+        q.add(_draft("A reply.", kind="reply", ticker="NVDA"))
+    assert q.replies_de_hoy() == 3
+    # Una segunda corrida que ya leyó `ya=0` antes: al recontar, se planta.
+    assert q.replies_de_hoy() >= 3
+
+
+def test_los_replies_de_ayer_no_gastan_el_cupo_de_hoy(tmp_path):
+    from datetime import date, timedelta
+
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("A reply.", kind="reply", ticker="NVDA"))
+    ayer = (date.today() - timedelta(days=1)).isoformat() + "T10:00:00+00:00"
+    q.update(i.id, creado=ayer)
+    assert q.replies_de_hoy() == 0

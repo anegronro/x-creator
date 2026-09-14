@@ -28,6 +28,23 @@ if [ ! -x "$XC" ]; then
   exit 1
 fi
 
+# Una sola instancia por tarea. `vigilar` corre cada 15 minutos y llama al
+# modelo por cada post relevante; cuando tarda más de 15, el siguiente cron
+# arranca ENCIMA del anterior. Los dos leían el cupo diario de replies al
+# empezar, cada uno se gastaba el suyo entero, y así salieron 19 replies
+# propuestos con el tope puesto en 3. Lo mismo valdría para `publicar`, donde
+# dos procesos solapados podrían publicar el mismo item dos veces — y eso no
+# se deshace.
+#
+# `flock -n` hace que el segundo se rinda en vez de acumularse.
+TAREA="${1:-sin-tarea}"
+CERROJO="$RAIZ/Contenido/.cerrojo-$TAREA"
+exec 9>"$CERROJO" || exit 1
+if ! flock -n 9; then
+  registrar "$TAREA: ya había una corrida en marcha, esta se salta."
+  exit 0
+fi
+
 case "${1:-}" in
   telegram)
     # Recoge los botones que tocaste y manda los pendientes nuevos.
