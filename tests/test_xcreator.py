@@ -2375,3 +2375,34 @@ def test_publicar_deja_pasar_el_macro_que_nombra_el_dato(tmp_path):
         tmp_path, "The 10-year is at 4.95%, the top of its loaded range.",
         ticker="", kind="macro")
     assert revisar_antes_de_publicar(item) == []
+
+
+def test_el_post_que_nace_programado_llega_a_publicarse(tmp_path):
+    """`decidido` solo lo escriben aprobar/rechazar.
+
+    Exigirlo dejaba a todo borrador automático invisible para el
+    publicador: solo salía lo que Angel aprobaba a mano, que es justo lo
+    que la cola programada venía a evitar.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from xcreator.store import MINUTOS_DE_GRACIA, Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("$NVDA holds. NVDA at 44x.", ticker="NVDA"),
+              estado="programado")
+    assert i.decidido == "", "un borrador automático no lo decide nadie"
+    viejo = (datetime.now(timezone.utc)
+             - timedelta(minutes=MINUTOS_DE_GRACIA + 1)).isoformat()
+    q.update(i.id, creado=viejo)
+    assert [x.id for x in q.listos_para_publicar()] == [i.id]
+
+
+def test_la_ventana_de_veto_se_respeta_en_el_automatico(tmp_path):
+    """Recién creado no sale: para eso está la ventana."""
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("$NVDA holds. NVDA at 44x.", ticker="NVDA"),
+          estado="programado")
+    assert q.listos_para_publicar() == []

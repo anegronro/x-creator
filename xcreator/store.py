@@ -171,9 +171,18 @@ class Queue:
         for i in self.load():
             if i.estado == "aprobado":
                 listos.append(i)
-            elif i.estado == "programado" and i.decidido:
+            elif i.estado == "programado":
+                # La ventana de veto cuenta desde que el borrador EXISTE, no
+                # desde que alguien lo tocó: un post que nace programado no
+                # tiene `decidido` —eso solo lo escriben aprobar/rechazar— y
+                # exigirlo lo dejaba invisible para el publicador para
+                # siempre. Publicar solo, que es lo que se pidió, nunca
+                # llegaba a ocurrir: salía únicamente lo aprobado a mano.
+                desde_txt = i.decidido or i.creado
+                if not desde_txt:
+                    continue
                 try:
-                    desde = datetime.fromisoformat(i.decidido)
+                    desde = datetime.fromisoformat(desde_txt)
                 except ValueError:
                     continue
                 if desde.tzinfo is None:
