@@ -23,7 +23,14 @@ def analizar(
     csv: Path = typer.Argument(..., help="Export de posts de analytics.x.com"),
 ) -> None:
     """Mide qué funciona en TU cuenta: patrones con n, efecto y p-value."""
-    from xcreator.analytics import AnalyticsError, analyze, load_posts
+    from xcreator.analytics import (
+        AnalyticsError, analyze, es_export_de_cuenta, load_posts,
+    )
+
+    # X exporta dos CSV distintos con el mismo botón y no lo avisa.
+    if es_export_de_cuenta(csv):
+        _analizar_cuenta(csv)
+        return
 
     try:
         posts = load_posts(csv)
@@ -171,6 +178,48 @@ def redactar(
             item = q.add(d)
             typer.echo(f"  -> cola id {item.id}")
         typer.echo("")
+
+
+def _analizar_cuenta(csv: Path) -> None:
+    """Salud de la cuenta desde el overview diario (sin texto de posts)."""
+    from xcreator.analytics import (
+        UMBRAL_IMPRESIONES, VENTANA_DIAS, AnalyticsError, analyze_account,
+        load_account_days,
+    )
+
+    try:
+        r = analyze_account(load_account_days(csv))
+    except AnalyticsError as e:
+        typer.secho(f"CSV inservible: {e}", fg="red", err=True)
+        raise typer.Exit(1)
+
+    typer.secho("Este es el export de CUENTA (una fila por día), no el de "
+                "posts.", fg="yellow")
+    typer.echo("Sirve para medir la salud de la cuenta; para saber QUÉ "
+               "contenido funciona hace falta el export de Posts, que trae "
+               "el texto.\n")
+
+    typer.echo(f"=== {r.dias} días ({r.desde} a {r.hasta}) ===")
+    typer.echo(f"Impresiones totales:   {r.impresiones_total:>12,.0f}")
+    typer.echo(f"  últimos 90 días:     {r.impresiones_90d:>12,.0f}")
+    typer.echo(f"  últimos 30 días:     {r.impresiones_30d:>12,.0f}")
+    typer.echo(f"Mediana diaria:        {r.mediana_diaria:>12,.0f}")
+    typer.echo(f"Mejor día del período: {r.mejor_dia:>12,.0f}")
+    typer.echo(f"Días sin una impresión:{r.dias_en_cero:>12,.0f}  "
+               f"({r.dias_sin_publicar_pct:.0%})")
+    typer.echo(f"Seguidores netos:      {r.follows_netos:>+12,.0f}")
+    typer.echo(f"Replies recibidos:     {r.replies_total:>12,.0f}")
+
+    typer.secho(f"\n=== Programa de monetización ===", bold=True)
+    typer.echo(f"Requisito: {UMBRAL_IMPRESIONES:,} impresiones en "
+               f"{VENTANA_DIAS} días (solo de usuarios Premium).")
+    typer.echo(f"Tienes:    {r.impresiones_90d:,.0f}")
+    typer.secho(f"Falta multiplicar el alcance por {r.factor_faltante:,.0f}x "
+                f"({r.ritmo_diario_90d:,.0f} impresiones/día hoy vs "
+                f"{UMBRAL_IMPRESIONES/VENTANA_DIAS:,.0f} necesarias).",
+                fg="red" if r.factor_faltante > 10 else "yellow")
+
+    typer.secho(f"\nCuello de botella -> {r.cuello_de_botella}", bold=True)
 
 
 @app.command("angulos")

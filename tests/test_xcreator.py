@@ -630,3 +630,92 @@ def test_el_angulo_entra_en_el_brief_id():
     b2 = from_prediction(_PRED)
     b2.angulo = "valuacion"
     assert b1.brief_id != b2.brief_id
+
+
+# --- export de CUENTA (el otro CSV que exporta X) -------------------------
+
+_CUENTA_HEADER = ["Date", "Impressions", "Likes", "Engagements", "Bookmarks",
+                  "Shares", "New follows", "Unfollows", "Replies", "Reposts"]
+
+
+def _fila_cuenta(fecha, imp=0, replies=0, follows=0, unfollows=0):
+    return {"Date": fecha, "Impressions": imp, "Likes": 0, "Engagements": 0,
+            "Bookmarks": 0, "Shares": 0, "New follows": follows,
+            "Unfollows": unfollows, "Replies": replies, "Reposts": 0}
+
+
+def test_distingue_los_dos_csv_de_x(tmp_path):
+    """X exporta dos CSV con el mismo botón; confundirlos da un análisis falso."""
+    from xcreator.analytics import es_export_de_cuenta
+
+    cuenta = _write_csv(tmp_path / "cuenta.csv",
+                        [_fila_cuenta("Sun, Sep 13, 2026", 9)], _CUENTA_HEADER)
+    posts = _write_csv(tmp_path / "posts.csv", [
+        {"Post text": "hola", "Impressions": "100", "Replies": "2"}])
+    assert es_export_de_cuenta(cuenta)
+    assert not es_export_de_cuenta(posts)
+
+
+def test_lee_el_formato_de_fecha_de_x(tmp_path):
+    from xcreator.analytics import load_account_days
+
+    p = _write_csv(tmp_path / "c.csv",
+                   [_fila_cuenta("Sun, Sep 13, 2026", 42)], _CUENTA_HEADER)
+    dias = load_account_days(p)
+    assert len(dias) == 1 and dias[0].impressions == 42
+
+
+def test_cuenta_mide_la_distancia_al_umbral(tmp_path):
+    from xcreator.analytics import UMBRAL_IMPRESIONES, analyze_account, load_account_days
+
+    filas = [_fila_cuenta(f"2026-06-{d:02d}", 10) for d in range(1, 31)]
+    r = analyze_account(load_account_days(
+        _write_csv(tmp_path / "c.csv", filas, _CUENTA_HEADER)))
+    assert r.impresiones_90d == 300
+    assert r.factor_faltante == pytest.approx(UMBRAL_IMPRESIONES / 300)
+
+
+def test_diagnostico_consistencia_antes_que_contenido(tmp_path):
+    """Con la mitad de los días en cero, el problema no es la redacción."""
+    from xcreator.analytics import analyze_account, load_account_days
+
+    filas = [_fila_cuenta(f"2026-06-{d:02d}", 0 if d % 2 else 500)
+             for d in range(1, 31)]
+    r = analyze_account(load_account_days(
+        _write_csv(tmp_path / "c.csv", filas, _CUENTA_HEADER)))
+    assert r.cuello_de_botella.startswith("CONSISTENCIA")
+
+
+def test_diagnostico_alcance_cuando_publica_pero_no_lo_ven(tmp_path):
+    from xcreator.analytics import analyze_account, load_account_days
+
+    filas = [_fila_cuenta(f"2026-06-{d:02d}", 5) for d in range(1, 31)]
+    r = analyze_account(load_account_days(
+        _write_csv(tmp_path / "c.csv", filas, _CUENTA_HEADER)))
+    assert r.cuello_de_botella.startswith("ALCANCE")
+
+
+# --- validación de credenciales de Telegram -------------------------------
+
+@pytest.mark.parametrize("token,pista", [
+    ("A" * 35, "prefijo"),                     # solo la segunda mitad
+    ("7872311234", "id del bot"),              # el id, no el token
+    ("8123456789:" + "x" * 31, None),          # correcto
+])
+def test_detecta_tokens_mal_pegados(token, pista):
+    from xcreator.telegram import revisar_credenciales
+
+    avisos = revisar_credenciales(
+        SimpleNamespace(telegram_bot_token=token, telegram_chat_id="123"))
+    if pista is None:
+        assert avisos == []
+    else:
+        assert any(pista in a for a in avisos)
+
+
+def test_credenciales_mal_pegadas_no_llegan_a_la_api():
+    from xcreator.telegram import TelegramError, bot_desde
+
+    s = SimpleNamespace(telegram_bot_token="A" * 35, telegram_chat_id="123")
+    with pytest.raises(TelegramError, match="prefijo"):
+        bot_desde(s)

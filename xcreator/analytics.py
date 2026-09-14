@@ -410,3 +410,149 @@ def analyze(posts: list[Post], *, metric: str = "reply_rate") -> Report:
             k: (len(v), statistics.median(v)) for k, v in sorted(por_horario.items())
         },
     )
+
+
+# --- Export de CUENTA (una fila por día) ----------------------------------
+#
+# X exporta dos CSV distintos y no lo avisa:
+#   - "Post activity": una fila por post, CON el texto -> patrones de contenido.
+#   - "Account overview": una fila por día, SIN texto -> salud de la cuenta.
+# El segundo no permite decir qué contenido funciona (no hay contenido que
+# mirar), pero sí responde la pregunta que importa antes de esa: si el
+# problema es lo que publicas o cuánto publicas.
+
+_DIA_FORMATOS = ("%a, %b %d, %Y", "%Y-%m-%d", "%m/%d/%Y", "%b %d, %Y")
+
+# Umbrales del programa de Ads Revenue Sharing.
+UMBRAL_IMPRESIONES = 5_000_000
+VENTANA_DIAS = 90
+
+
+@dataclass
+class Dia:
+    fecha: object
+    impressions: float
+    likes: float
+    replies: float
+    reposts: float
+    follows: float
+    unfollows: float
+    engagements: float
+
+
+def _parse_dia(raw: str):
+    s = (raw or "").strip().strip('"')
+    for fmt in _DIA_FORMATOS:
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def es_export_de_cuenta(csv_path: Path) -> bool:
+    """True si el CSV es el overview diario y no el de posts."""
+    try:
+        with csv_path.open(newline="", encoding="utf-8-sig") as fh:
+            cabeceras = {_norm(h) for h in (csv.reader(fh).__next__() or [])}
+    except (OSError, StopIteration):
+        return False
+    # La marca distintiva: trae fecha e impresiones pero NO texto de post.
+    return "impressions" in cabeceras and not (
+        cabeceras & {"posttext", "tweettext", "text", "post"}
+    )
+
+
+def load_account_days(csv_path: Path) -> list[Dia]:
+    if not csv_path.exists():
+        raise AnalyticsError(f"No existe {csv_path}")
+    dias: list[Dia] = []
+    with csv_path.open(newline="", encoding="utf-8-sig") as fh:
+        reader = csv.DictReader(fh)
+        cols = {_norm(h): h for h in (reader.fieldnames or [])}
+
+        def g(row, *alias):
+            for a in alias:
+                if a in cols:
+                    return _num(row.get(cols[a]))
+            return 0.0
+
+        for row in reader:
+            fecha = _parse_dia(row.get(cols.get("date", "Date"), ""))
+            if fecha is None:
+                continue
+            dias.append(Dia(
+                fecha=fecha,
+                impressions=g(row, "impressions", "views"),
+                likes=g(row, "likes"), replies=g(row, "replies"),
+                reposts=g(row, "reposts", "retweets"),
+                follows=g(row, "newfollows", "follows"),
+                unfollows=g(row, "unfollows"),
+                engagements=g(row, "engagements"),
+            ))
+    if not dias:
+        raise AnalyticsError(f"{csv_path} no trae filas con fecha reconocible.")
+    return sorted(dias, key=lambda d: d.fecha)
+
+
+@dataclass
+class ReporteCuenta:
+    dias: int
+    desde: str
+    hasta: str
+    impresiones_total: float
+    impresiones_90d: float
+    impresiones_30d: float
+    mediana_diaria: float
+    dias_en_cero: int
+    follows_netos: float
+    replies_total: float
+    mejor_dia: float
+
+    @property
+    def ritmo_diario_90d(self) -> float:
+        return self.impresiones_90d / min(self.dias, VENTANA_DIAS)
+
+    @property
+    def factor_faltante(self) -> float:
+        """Cuántas veces hay que multiplicar el alcance actual."""
+        return UMBRAL_IMPRESIONES / max(self.impresiones_90d, 1.0)
+
+    @property
+    def dias_sin_publicar_pct(self) -> float:
+        return self.dias_en_cero / self.dias if self.dias else 0.0
+
+    @property
+    def cuello_de_botella(self) -> str:
+        """El diagnóstico honesto: ¿qué hay que arreglar primero?
+
+        Con una cuenta chica casi siempre es volumen, no calidad — y confundir
+        los dos lleva a pulir posts que nadie ve.
+        """
+        if self.dias_sin_publicar_pct > 0.30:
+            return ("CONSISTENCIA: uno de cada tres días no genera ni una "
+                    "impresión. Antes de optimizar contenido hay que publicar.")
+        if self.mediana_diaria < 100:
+            return ("ALCANCE: publicas, pero casi nadie lo ve. El problema es "
+                    "distribución (replies a cuentas grandes), no redacción.")
+        if self.impresiones_90d and self.replies_total / max(self.impresiones_90d, 1) < 0.001:
+            return ("CONVERSACIÓN: te leen pero no te responden, y el revenue "
+                    "share paga por replies. Ahí sí toca cambiar el contenido.")
+        return "Sin cuello evidente: seguir midiendo."
+
+
+def analyze_account(dias: list[Dia]) -> ReporteCuenta:
+    imp = [d.impressions for d in dias]
+    ult90 = dias[-VENTANA_DIAS:]
+    return ReporteCuenta(
+        dias=len(dias),
+        desde=str(dias[0].fecha), hasta=str(dias[-1].fecha),
+        impresiones_total=sum(imp),
+        impresiones_90d=sum(d.impressions for d in ult90),
+        impresiones_30d=sum(d.impressions for d in dias[-30:]),
+        mediana_diaria=statistics.median(imp) if imp else 0.0,
+        dias_en_cero=sum(1 for i in imp if i == 0),
+        follows_netos=sum(d.follows - d.unfollows for d in dias),
+        replies_total=sum(d.replies for d in dias),
+        mejor_dia=max(imp) if imp else 0.0,
+    )

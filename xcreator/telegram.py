@@ -17,6 +17,7 @@ Flujo:
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -98,8 +99,40 @@ class Bot:
         return res if isinstance(res, list) else []
 
 
+# Un token de bot es "<id numérico>:<hash>". Pegar solo el hash, o pegar el
+# id del bot en el campo del chat, son los dos errores de copiado habituales
+# y ambos fallan después con un mensaje inútil de la API.
+_TOKEN_RE = re.compile(r"\d{6,15}:[A-Za-z0-9_-]{30,}")
+
+
+def revisar_credenciales(settings) -> list[str]:
+    """Problemas de FORMATO detectables sin llamar a la API."""
+    avisos = []
+    t = (settings.telegram_bot_token or "").strip()
+    if t and not _TOKEN_RE.fullmatch(t):
+        if t.isdigit():
+            avisos.append(
+                "TELEGRAM_X_BOT_TOKEN son solo dígitos: eso es el id del bot, "
+                "no el token. El token completo es '<id>:<hash>'."
+            )
+        elif ":" not in t:
+            avisos.append(
+                f"TELEGRAM_X_BOT_TOKEN ({len(t)} caracteres) no lleva el "
+                f"prefijo '<id>:'. Parece que se copió solo la segunda mitad."
+            )
+        else:
+            avisos.append("TELEGRAM_X_BOT_TOKEN no tiene forma de token.")
+    c = str(settings.telegram_chat_id or "").strip()
+    if c and not (c.lstrip("-").isdigit() or c.startswith("@")):
+        avisos.append("TELEGRAM_X_CHAT_ID debería ser numérico (o @canal).")
+    return avisos
+
+
 def bot_desde(settings) -> Bot:
     """Construye el bot o explica exactamente qué falta."""
+    problemas = revisar_credenciales(settings)
+    if problemas:
+        raise TelegramError(" | ".join(problemas))
     if not settings.telegram_bot_token:
         raise TelegramError(
             "Falta TELEGRAM_X_BOT_TOKEN en API/.env. Créalo con @BotFather "
