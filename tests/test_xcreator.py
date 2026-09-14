@@ -1773,3 +1773,58 @@ def test_el_mensaje_de_un_reply_trae_el_enlace(tmp_path):
              url_origen="https://x.com/Barchart/status/123")
     texto = _texto_item(q.get(i.id))
     assert "pégala tú" in texto and "https://x.com/Barchart/status/123" in texto
+
+
+# --- deep link para replies -----------------------------------------------
+
+def test_el_intent_cuelga_del_post_correcto_y_trae_el_texto():
+    """X no deja publicar replies por API, pero sí abrir su compositor
+    prellenado: deja el trabajo en un toque en vez de copiar y buscar."""
+    import urllib.parse
+
+    from xcreator.telegram import intent_respuesta
+
+    u = intent_respuesta("Base is $305.61 for $NVDA and NVDA.",
+                         "https://x.com/Barchart/status/12345")
+    partes = urllib.parse.parse_qs(urllib.parse.urlparse(u).query)
+    assert partes["in_reply_to"] == ["12345"]
+    assert partes["text"] == ["Base is $305.61 for $NVDA and NVDA."]
+
+
+def test_sin_post_original_no_hay_intent():
+    from xcreator.telegram import intent_respuesta
+
+    assert intent_respuesta("texto", "") is None
+    assert intent_respuesta("texto", "https://x.com/user/status/no-numerico") is None
+
+
+def test_el_reply_lleva_boton_para_abrir_en_x(tmp_path):
+    from xcreator.telegram import _botones
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto", kind="reply"))
+    q.update(i.id, url_origen="https://x.com/Barchart/status/12345")
+    filas = _botones(i.id, q.get(i.id))
+    assert len(filas) == 2
+    assert filas[1][0]["url"].startswith("https://x.com/intent/post")
+
+
+def test_un_post_propio_no_lleva_ese_boton(tmp_path):
+    """Los posts propios sí se publican solos: el botón sobraría."""
+    from xcreator.telegram import _botones
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto"))
+    assert len(_botones(i.id, q.get(i.id))) == 1
+
+
+def test_el_intent_usa_el_texto_EDITADO(tmp_path):
+    """Si lo reescribiste desde el teléfono, se publica lo tuyo."""
+    from xcreator.telegram import intent_respuesta
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("original", kind="reply"))
+    q.update(i.id, url_origen="https://x.com/a/status/9")
+    q.aprobar(i.id, texto_editado="mi versión")
+    assert "mi%20versi" in intent_respuesta(q.get(i.id).texto_final,
+                                            q.get(i.id).url_origen)

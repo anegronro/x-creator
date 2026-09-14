@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import re
+import urllib.parse
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -245,12 +246,37 @@ def _texto_item(item) -> str:
     return "\n".join(partes)
 
 
-def _botones(item_id: str) -> list:
-    return [[
+def intent_respuesta(texto: str, url_origen: str) -> str | None:
+    """Deep link que abre X con el reply escrito y colgando del post correcto.
+
+    X no deja publicar replies por API desde feb 2026, pero sí abrir su
+    propio compositor prellenado. Deja el trabajo en un toque —"Post"— en vez
+    de copiar, buscar el post y pegar. Es el camino oficial, no un rodeo.
+    """
+    if not url_origen:
+        return None
+    origen = url_origen.rstrip("/").split("/")[-1]
+    if not origen.isdigit():
+        return None
+    return ("https://x.com/intent/post?in_reply_to=" + origen
+            + "&text=" + urllib.parse.quote(texto, safe=""))
+
+
+def _botones(item_id: str, item=None) -> list:
+    fila = [
         {"text": "✅ Aprobar", "callback_data": f"ok:{item_id}"},
         {"text": "✏️ Editar", "callback_data": f"ed:{item_id}"},
         {"text": "❌ Descartar", "callback_data": f"no:{item_id}"},
-    ]]
+    ]
+    filas = [fila]
+    # Un reply no se puede publicar por API: el botón abre X con el texto ya
+    # puesto, que es lo más cerca del automático que permite la plataforma.
+    if item is not None and getattr(item, "kind", "") == "reply":
+        intent = intent_respuesta(item.texto_final, item.url_origen)
+        if intent:
+            filas.append([{"text": "🚀 Abrir en X con el texto listo",
+                           "url": intent}])
+    return filas
 
 
 # --- acciones -------------------------------------------------------------
@@ -271,9 +297,9 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
             # Con gráfico se manda la foto: aprobar una imagen sin verla es
             # aprobar a ciegas.
             res = bot.send_photo(imagen, _texto_item(item),
-                                 botones=_botones(item.id))
+                                 botones=_botones(item.id, item))
         else:
-            res = bot.send(_texto_item(item), botones=_botones(item.id))
+            res = bot.send(_texto_item(item), botones=_botones(item.id, item))
         queue.update(item.id, metricas={**item.metricas,
                                         "telegram_message_id": res.get("message_id")})
         n += 1
