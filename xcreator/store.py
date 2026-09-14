@@ -161,8 +161,12 @@ class Queue:
         """Minutos desde el último post publicado, o None si no hay ninguno."""
         from datetime import datetime, timezone
 
+        # Solo cuentan los posts PROPIOS: un reply cuelga de otra
+        # conversación y no compite con ellos en el timeline, así que no
+        # tiene por qué consumir el turno del siguiente post propio.
         marcas = [i.publicado_en for i in self.load()
-                  if i.estado == "publicado" and i.publicado_en]
+                  if i.estado == "publicado" and i.publicado_en
+                  and i.kind != "reply"]
         if not marcas:
             return None
         try:

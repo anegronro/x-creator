@@ -32,6 +32,24 @@ COSTO_POST = 0.015
 COSTO_POST_CON_LINK = 0.20
 _URL = re.compile(r"https?://\S+|\bt\.co/\S+")
 
+# Época de los IDs de X (snowflake): el timestamp va codificado en el propio
+# id, así que se puede saber la edad de un post sin gastar una lectura.
+_EPOCA_X_MS = 1288834974657
+# Pasado esto, un reply llega a una conversación que ya terminó: cuesta lo
+# mismo y no lo ve nadie.
+HORAS_MAX_PARA_RESPONDER = 12
+
+
+def edad_horas(post_id: str) -> float | None:
+    """Horas desde que se publicó el post, deducidas de su id. None si no aplica."""
+    from datetime import datetime, timezone
+
+    if not post_id or not post_id.isdigit():
+        return None
+    ms = (int(post_id) >> 22) + _EPOCA_X_MS
+    creado = datetime.fromtimestamp(ms / 1000, tz=timezone.utc)
+    return (datetime.now(timezone.utc) - creado).total_seconds() / 3600
+
 
 class PublicarError(RuntimeError):
     """No se publicó. Nunca se traga en silencio."""
@@ -77,6 +95,23 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
                 f"pieza {i} lleva un link (cuesta ${COSTO_POST_CON_LINK} en vez "
                 f"de ${COSTO_POST} y baja el alcance). Usa --permitir-link si "
                 f"de verdad lo quieres")
+    # X bloqueó los replies programáticos el 2026-02-23 para frenar el spam
+    # de replies generados con LLM: POST /2/tweets solo admite responder si el
+    # autor original te menciona o te cita. Aplica a todos los planes salvo
+    # Enterprise. No es un fallo de configuración y no hay forma de sortearlo
+    # por API — intentarlo solo devuelve un 403 y gasta la llamada.
+    if item.kind == "reply" and item.url_origen:
+        problemas.append(
+            "los replies a otras cuentas no se pueden publicar por API "
+            "(restricción de X desde feb 2026): cópialo y pégalo a mano")
+    # Un reply a una conversación muerta es dinero tirado.
+    if item.url_origen:
+        origen = item.url_origen.rstrip("/").split("/")[-1]
+        horas = edad_horas(origen)
+        if horas is not None and horas > HORAS_MAX_PARA_RESPONDER:
+            problemas.append(
+                f"el post al que responde tiene {horas:.0f} horas (límite "
+                f"{HORAS_MAX_PARA_RESPONDER}): la conversación ya pasó")
     if numeros_permitidos is not None:
         malos = validate_numbers("\n".join(piezas), numeros_permitidos)
         if malos:

@@ -219,10 +219,13 @@ def _texto_item(item) -> str:
     )
     cab = f"{item.ticker} · {item.kind} · {len(item.texto)}c"
     if item.responde_a:
-        cab = f"RESPUESTA a {item.responde_a} · " + cab
+        # X no deja publicar replies por API: esto se copia y se pega.
+        cab = f"RESPUESTA a {item.responde_a} (pégala tú) · " + cab
     if len(piezas) > 1:
         cab += f" · hilo de {len(piezas)}"
     partes = [cab, "", cuerpo]
+    if item.url_origen:
+        partes += ["", f"Abre y responde aquí: {item.url_origen}"]
     partes += ["", "— lo de arriba es lo que se publica; lo de abajo son notas —"]
     if item.approach:
         partes += [f"ángulo: {item.approach}"]

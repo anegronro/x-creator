@@ -551,10 +551,13 @@ def publicar(
 
     # Espaciar es parte de publicar bien: una tanda de posts seguidos se lee
     # como automatizada y los posts compiten entre sí por el mismo lector.
-    if espaciado and not item_id:
+    # Los replies van primero y se saltan el espaciado: caducan en horas,
+    # mientras que un post propio sigue igual de bueno dentro de un rato.
+    items.sort(key=lambda i: 0 if i.kind == "reply" else 1)
+    if espaciado and not item_id and not any(i.kind == "reply" for i in items):
         desde = q.minutos_desde_ultima_publicacion()
         if desde is not None and desde < espaciado:
-            typer.echo(f"Toca esperar: el último post salió hace "
+            typer.echo(f"Toca esperar: el último post propio salió hace "
                        f"{desde:.0f} min y el espaciado es de {espaciado} min.")
             return
     # El máximo se aplica DESPUÉS de descartar lo impublicable. Al revés, un

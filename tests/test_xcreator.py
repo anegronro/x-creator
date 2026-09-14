@@ -1686,3 +1686,90 @@ def test_un_borrador_invalido_no_consume_el_cupo(tmp_path):
     aprobados = [i for i in q.load() if i.estado == "aprobado"]
     publicables = [i for i in aprobados if not revisar_antes_de_publicar(i)]
     assert [i.id for i in publicables[:1]] == [bueno.id]
+
+
+# --- replies: caducan, y no compiten con los posts propios ----------------
+
+def test_la_edad_del_post_sale_de_su_propio_id():
+    """El id de X codifica el timestamp: se puede saber la edad sin gastar
+    una lectura de API ($0.005 cada una)."""
+    from datetime import datetime, timezone
+
+    from xcreator.publicar import _EPOCA_X_MS, edad_horas
+
+    hace_3h = datetime.now(timezone.utc).timestamp() * 1000 - 3 * 3600 * 1000
+    post_id = str(int((hace_3h - _EPOCA_X_MS)) << 22)
+    assert 2.9 < edad_horas(post_id) < 3.1
+    assert edad_horas("no-es-un-id") is None
+    assert edad_horas("") is None
+
+
+def test_no_se_responde_a_una_conversacion_muerta(tmp_path):
+    from datetime import datetime, timezone
+
+    from xcreator.publicar import (
+        HORAS_MAX_PARA_RESPONDER, _EPOCA_X_MS, revisar_antes_de_publicar,
+    )
+
+    def id_de_hace(horas):
+        ms = datetime.now(timezone.utc).timestamp() * 1000 - horas * 3600 * 1000
+        return str(int(ms - _EPOCA_X_MS) << 22)
+
+    q = Queue(tmp_path / "cola.jsonl")
+    viejo = q.add(_draft("Reply to $NVDA and NVDA."))
+    q.update(viejo.id, url_origen=f"https://x.com/x/status/{id_de_hace(HORAS_MAX_PARA_RESPONDER + 5)}")
+    q.aprobar(viejo.id)
+    assert any("conversación ya pasó" in p
+               for p in revisar_antes_de_publicar(q.get(viejo.id)))
+
+    fresco = q.add(_draft("Reply to $NVDA and NVDA."))
+    q.update(fresco.id, url_origen=f"https://x.com/x/status/{id_de_hace(1)}")
+    q.aprobar(fresco.id)
+    assert revisar_antes_de_publicar(q.get(fresco.id)) == []
+
+
+def test_un_reply_no_consume_el_turno_del_siguiente_post_propio(tmp_path):
+    """Un reply cuelga de otra conversación: no compite en el timeline con
+    los posts propios y no debe gastar su espaciado."""
+    from datetime import datetime, timezone
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("un reply", kind="reply"))
+    q.update(i.id, estado="publicado",
+             publicado_en=datetime.now(timezone.utc).isoformat())
+    assert q.minutos_desde_ultima_publicacion() is None
+
+
+def test_los_replies_no_se_publican_por_api(tmp_path):
+    """X bloqueó los replies programáticos el 2026-02-23 contra el spam de
+    LLM: solo se puede responder si el autor original te menciona. Intentarlo
+    devuelve 403 y gasta la llamada, así que se bloquea antes."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("A reply about $NVDA and NVDA.", kind="reply"))
+    q.update(i.id, url_origen="https://x.com/Barchart/status/2099395664018809000")
+    q.aprobar(i.id)
+    problemas = revisar_antes_de_publicar(q.get(i.id))
+    assert any("cópialo y pégalo" in p for p in problemas)
+
+
+def test_un_post_propio_sigue_publicandose(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("$NVDA at 44x. NVDA base case is $305.61."))
+    q.aprobar(i.id)
+    assert revisar_antes_de_publicar(q.get(i.id)) == []
+
+
+def test_el_mensaje_de_un_reply_trae_el_enlace(tmp_path):
+    """Para pegarlo hay que poder abrir el post original de un toque."""
+    from xcreator.telegram import _texto_item
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("texto", kind="reply"))
+    q.update(i.id, responde_a="@Barchart",
+             url_origen="https://x.com/Barchart/status/123")
+    texto = _texto_item(q.get(i.id))
+    assert "pégala tú" in texto and "https://x.com/Barchart/status/123" in texto
