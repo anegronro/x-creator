@@ -108,6 +108,21 @@ nuestras cifras aporten a ESE post.
 Un asistente que siempre encuentra algo que decir es una máquina de spam, y
 es exactamente lo que X penaliza.
 
+## Qué publicar hoy
+
+```bash
+xc temas --detalle
+```
+
+Tener muchos briefs no es tener muchos temas. Un ticker con score medio,
+múltiplo normal y precio dentro del rango no da un post: sin tensión no hay
+conversación, y sin conversación no hay monetización. `xc temas` puntúa la
+tensión editorial de cada brief con reglas explícitas —cada punto trae su
+motivo escrito, para que el ranking se pueda discutir— y ordena.
+
+La jerarquía sale de qué genera respuestas, no de qué es buena inversión: un
+modelo que se equivocó da mejor contenido que uno que acertó.
+
 ## Vigilar cuentas grandes
 
 ```bash

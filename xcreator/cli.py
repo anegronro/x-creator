@@ -420,6 +420,36 @@ def vigilar(
                f"-> {encolados} encolados. Gasto real: ${cliente.gastado:.3f}")
 
 
+@app.command("temas")
+def temas(
+    top: int = typer.Option(15, help="Cuántos mostrar."),
+    detalle: bool = typer.Option(False, help="Mostrar las razones."),
+) -> None:
+    """Qué tickers tienen HOY una historia que contar, y por qué.
+
+    Tener muchos briefs no es tener muchos temas: sin tensión no hay
+    conversación, y sin conversación no hay monetización.
+    """
+    from xcreator.brief import load_briefs
+    from xcreator.datos import live_price
+    from xcreator.temas import ranking
+
+    _, s = _queue()
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+                         limit=500)
+    r = ranking(briefs)
+    typer.echo(f"{len(briefs)} briefs disponibles -> {len(r)} con historia hoy\n")
+    for t in r[:top]:
+        typer.secho(f"  {t.puntos:>4.0f}  {t.ticker:<6}", fg="green", nl=False)
+        typer.echo(f"  {t.razones[0] if t.razones else ''}")
+        if detalle:
+            for razon in t.razones[1:]:
+                typer.echo(f"              {razon}")
+    if not r:
+        typer.secho("Ningún brief tiene tensión hoy. Publicar por publicar "
+                    "es peor que no publicar.", fg="yellow")
+
+
 @app.command("cola")
 def cola(todos: bool = typer.Option(False, help="Incluir ya decididos.")) -> None:
     """Lista los borradores pendientes de tu revisión."""

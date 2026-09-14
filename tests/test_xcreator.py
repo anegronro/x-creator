@@ -986,3 +986,69 @@ def test_una_llamada_fallida_no_cobra(tmp_path, monkeypatch):
     with pytest.raises(XAPIError):
         c.posts_recientes("@zerohedge", limite=20)
     assert c.gastado == 0.0
+
+
+# --- tensión editorial ----------------------------------------------------
+
+def _brief_con(**cambios):
+    from xcreator.brief import from_prediction
+
+    pred = dict(_PRED)
+    precio_hoy = cambios.pop("precio_hoy", None)
+    pred.update(cambios)
+    return from_prediction(pred, price_now=precio_hoy)
+
+
+def test_precio_bajo_el_bear_es_la_mejor_historia():
+    """Que la tesis se esté rompiendo es el contenido más fuerte: es raro
+    publicarlo y provoca respuestas."""
+    from xcreator.temas import evaluar
+
+    t = evaluar(_brief_con(precio_hoy=150.0))  # bear es 194.56
+    assert t.puntos >= 3
+    assert any("POR DEBAJO" in r for r in t.razones)
+
+
+def test_precio_sobre_el_bull_tambien_es_historia():
+    from xcreator.temas import evaluar
+
+    t = evaluar(_brief_con(precio_hoy=400.0))  # bull es 316.41
+    assert any("superó" in r for r in t.razones)
+
+
+def test_bear_pegado_al_spot_se_marca():
+    """Un escenario bajo a -1% no es un escenario bajo: es un hueco."""
+    from xcreator.temas import evaluar
+
+    t = evaluar(_brief_con(bear=195.0))  # precio de entrada 196.53
+    assert any("pegado al precio" in r for r in t.razones)
+
+
+def test_un_brief_sin_tension_no_es_tema():
+    from xcreator.temas import evaluar
+
+    t = evaluar(_brief_con(bear=140.0, bull=260.0, score10=5.5, pe_now=22.0,
+                           precio_hoy=200.0))
+    assert not t.tiene_historia
+
+
+def test_ranking_ordena_por_tension_y_filtra():
+    from xcreator.temas import ranking
+
+    fuerte = _brief_con(precio_hoy=150.0)
+    plano = _brief_con(bear=140.0, bull=260.0, score10=5.5, pe_now=22.0,
+                       precio_hoy=200.0)
+    r = ranking([plano, fuerte])
+    assert [t.ticker for t in r] == ["NVDA"]   # el plano se filtró
+    assert r[0].razones
+
+
+def test_toda_puntuacion_trae_su_razon():
+    """Sin motivo escrito no hay punto: el ranking tiene que poder discutirse."""
+    from xcreator.temas import evaluar
+
+    for cambios in ({"precio_hoy": 150.0}, {"bear": 195.0},
+                    {"score10": 9.5}, {"pe_now": 80.0}):
+        t = evaluar(_brief_con(**cambios))
+        if t.puntos > 0:
+            assert t.razones, f"{cambios} puntuó sin razón"
