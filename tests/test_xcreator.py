@@ -475,7 +475,10 @@ def test_sin_token_falla_sin_caer_en_otro_bot(tmp_path):
 def test_sin_chat_id_falla_claro():
     from xcreator.telegram import TelegramError, bot_desde
 
-    s = SimpleNamespace(telegram_bot_token="t", telegram_chat_id=None)
+    # Token BIEN formado a propósito: así se prueba la falta de chat_id y no
+    # la validación de formato, que corre antes.
+    s = SimpleNamespace(telegram_bot_token="8123456789:" + "x" * 31,
+                        telegram_chat_id=None)
     with pytest.raises(TelegramError, match="TELEGRAM_X_CHAT_ID"):
         bot_desde(s)
 
