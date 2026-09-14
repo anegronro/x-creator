@@ -1938,3 +1938,36 @@ def test_lo_ya_decidido_no_vuelve_al_telefono(tmp_path):
     q.aprobar(a.id)
     q.rechazar(b.id)
     assert q.pendientes() == []
+
+
+# --- ritmo: posts esparcidos, replies inmediatos --------------------------
+
+def test_un_reply_no_espera_al_espaciado_de_los_posts(tmp_path):
+    """Un post propio sigue igual de bueno dentro de hora y media; un reply
+    pierde alcance por minutos."""
+    from datetime import datetime, timezone
+
+    q = Queue(tmp_path / "cola.jsonl")
+    propio = q.add(_draft("post propio"))
+    q.update(propio.id, estado="publicado",
+             publicado_en=datetime.now(timezone.utc).isoformat())
+    # Acaba de salir un post propio, así que el espaciado está activo...
+    assert q.minutos_desde_ultima_publicacion() < 1
+
+    reply = q.add(_draft("un reply", kind="reply"))
+    q.aprobar(reply.id)
+    listos = q.listos_para_publicar()
+    # ...y aun así el reply está listo: no comparte turno con los propios.
+    assert reply.id in [i.id for i in listos]
+
+
+def test_publicar_pone_los_replies_primero(tmp_path):
+    """Caducan: si solo cabe uno por pasada, que sea el que se muere."""
+    q = Queue(tmp_path / "cola.jsonl")
+    propio = q.add(_draft("post propio"))
+    reply = q.add(_draft("un reply", kind="reply"))
+    for i in (propio, reply):
+        q.aprobar(i.id)
+    items = sorted(q.listos_para_publicar(),
+                   key=lambda i: 0 if i.kind == "reply" else 1)
+    assert items[0].id == reply.id

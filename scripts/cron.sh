@@ -42,7 +42,10 @@ case "${1:-}" in
     ;;
   vigilar)
     # Lee las cuentas grandes y propone replies. Esto SÍ cuesta (~$0.17).
-    salida=$("$XC" vigilar --limite 5 2>&1); codigo=$?
+    # 10 por cuenta, no 5: entre pasadas de 15 min las cuentas de titulares
+    # publican de sobra, y con `since_id` solo se paga lo nuevo — leerlo
+    # ahora o dentro de tres horas cuesta lo mismo.
+    salida=$("$XC" vigilar --limite 10 2>&1); codigo=$?
     registrar "vigilar: $(echo "$salida" | tail -3)"
     exit $codigo
     ;;

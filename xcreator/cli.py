@@ -467,7 +467,17 @@ def vigilar(
                 encolados += 1
                 # Los replies NO se programan: no se pueden publicar por API,
                 # así que programarlos sería prometer algo que no ocurre.
-                q.add(d)
+                item = q.add(d)
+                # Y se mandan YA, sin esperar al ciclo de Telegram: un reply
+                # pierde alcance por minutos, no por horas. Esperar al
+                # siguiente cron es regalar la ventana.
+                try:
+                    from xcreator.telegram import bot_desde, enviar_pendientes
+
+                    enviar_pendientes(q, bot_desde(s), limite=3)
+                except Exception as e:  # noqa: BLE001
+                    typer.secho(f"     (no se pudo avisar por Telegram: {e})",
+                                fg="yellow")
 
     s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
     s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))
