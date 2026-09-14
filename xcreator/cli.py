@@ -217,7 +217,10 @@ def redactar(
             typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
                         fg="red")
         if encolar:
-            item = q.add(d)
+            # Nace PROGRAMADO: sale solo pasada la ventana de veto. Lo que
+            # antes hacía falta para publicar (aprobar) ahora hace falta para
+            # parar, que es lo que Angel pidió.
+            item = q.add(d, estado="programado" if d.valido else "pendiente")
             ruta = _grafico_para(brief, s, item.id)
             if ruta:
                 q.update(item.id, imagen=str(ruta))
@@ -462,6 +465,8 @@ def vigilar(
             typer.echo(f"     {d.texto}")
             if encolar:
                 encolados += 1
+                # Los replies NO se programan: no se pueden publicar por API,
+                # así que programarlos sería prometer algo que no ocurre.
                 q.add(d)
 
     s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
@@ -541,12 +546,10 @@ def publicar(
     from xcreator.xauth import AlmacenTokens, AuthError, token_vigente
 
     q, s = _queue()
-    items = [q.get(item_id)] if item_id else [
-        i for i in q.load() if i.estado == "aprobado"]
+    items = [q.get(item_id)] if item_id else q.listos_para_publicar()
     items = [i for i in items if i is not None]
     if not items:
-        typer.echo("Nada aprobado que publicar. Aprueba desde Telegram o con "
-                   "`xc aprobar <id>`.")
+        typer.echo("Nada listo para publicar.")
         return
 
     # Espaciar es parte de publicar bien: una tanda de posts seguidos se lee

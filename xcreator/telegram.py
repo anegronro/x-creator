@@ -224,6 +224,10 @@ def _texto_item(item) -> str:
         cab = f"RESPUESTA a {item.responde_a} (pégala tú) · " + cab
     if len(piezas) > 1:
         cab += f" · hilo de {len(piezas)}"
+    if getattr(item, "estado", "") == "programado":
+        from xcreator.store import MINUTOS_DE_GRACIA
+
+        cab += f" · SALE SOLO en {MINUTOS_DE_GRACIA} min"
     partes = [cab, "", cuerpo]
     if item.url_origen:
         partes += ["", f"Abre y responde aquí: {item.url_origen}"]
@@ -263,10 +267,14 @@ def intent_respuesta(texto: str, url_origen: str) -> str | None:
 
 
 def _botones(item_id: str, item=None) -> list:
+    programado = item is not None and getattr(item, "estado", "") == "programado"
     fila = [
-        {"text": "✅ Aprobar", "callback_data": f"ok:{item_id}"},
+        # Con publicación automática, lo que hace falta a mano es PARARLO:
+        # el botón que importa es el de descartar, y va primero.
+        {"text": "🛑 PARAR", "callback_data": f"no:{item_id}"},
         {"text": "✏️ Editar", "callback_data": f"ed:{item_id}"},
-        {"text": "❌ Descartar", "callback_data": f"no:{item_id}"},
+        {"text": "🚀 Ya" if programado else "✅ Aprobar",
+         "callback_data": f"ok:{item_id}"},
     ]
     filas = [fila]
     # Un reply no se puede publicar por API: el botón abre X con el texto ya

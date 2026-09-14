@@ -16,7 +16,12 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-ESTADOS = ("pendiente", "aprobado", "rechazado", "publicado")
+ESTADOS = ("pendiente", "programado", "aprobado", "rechazado", "publicado")
+
+# Minutos entre que un borrador se programa y sale. Es la ventana para
+# vetarlo: si nadie hace nada, se publica. Al revés que la aprobación, donde
+# el silencio significaba que no salía nunca.
+MINUTOS_DE_GRACIA = 45
 
 
 @dataclass
@@ -92,7 +97,13 @@ class Queue:
         os.replace(tmp, self.path)
 
     def add(self, draft, *, estado: str = "pendiente") -> Item:
-        """Encola un `generate.Draft`."""
+        """Encola un `generate.Draft`.
+
+        Un borrador con problemas nunca nace programado: la publicación
+        automática solo puede aplicarse a lo que pasó todas las validaciones.
+        """
+        if estado == "programado" and not getattr(draft, "valido", True):
+            estado = "pendiente"
         item = Item(
             id=uuid.uuid4().hex[:10],
             creado=_now(),
@@ -140,6 +151,30 @@ class Queue:
             return None
         self._write(items)
         return found
+
+    def programar(self, item_id: str) -> Item | None:
+        """Lo deja listo para salir solo pasada la ventana de gracia."""
+        return self.update(item_id, estado="programado", decidido=_now())
+
+    def listos_para_publicar(self) -> list[Item]:
+        """Aprobados, más los programados cuya ventana de veto ya pasó."""
+        from datetime import datetime, timezone
+
+        ahora = datetime.now(timezone.utc)
+        listos = []
+        for i in self.load():
+            if i.estado == "aprobado":
+                listos.append(i)
+            elif i.estado == "programado" and i.decidido:
+                try:
+                    desde = datetime.fromisoformat(i.decidido)
+                except ValueError:
+                    continue
+                if desde.tzinfo is None:
+                    desde = desde.replace(tzinfo=timezone.utc)
+                if (ahora - desde).total_seconds() / 60 >= MINUTOS_DE_GRACIA:
+                    listos.append(i)
+        return listos
 
     def aprobar(self, item_id: str, texto_editado: str = "") -> Item | None:
         return self.update(

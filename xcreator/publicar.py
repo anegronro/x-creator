@@ -80,8 +80,9 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
     original: aprobar y editar son dos cosas y lo que sale es lo editado.
     """
     problemas: list[str] = []
-    if item.estado != "aprobado":
-        problemas.append(f"estado '{item.estado}': solo se publica lo aprobado")
+    if item.estado not in ("aprobado", "programado"):
+        problemas.append(
+            f"estado '{item.estado}': solo se publica lo aprobado o programado")
     piezas = [item.texto_final, *item.hilo]
     for i, p in enumerate(piezas, 1):
         if not p.strip():

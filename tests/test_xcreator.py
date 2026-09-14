@@ -1868,3 +1868,58 @@ def test_lo_verificable_si_se_publica():
 
     valores = from_prediction(_PRED).allowed_numbers()
     assert 40.10 in valores and 196.53 in valores and 0.40 in valores
+
+
+# --- publicación automática con ventana de veto ---------------------------
+
+def test_lo_programado_sale_solo_cuando_pasa_la_ventana(tmp_path):
+    """Al revés que aprobar: aquí el silencio publica. Lo que hace falta a
+    mano es pararlo."""
+    from datetime import datetime, timedelta, timezone
+
+    from xcreator.store import MINUTOS_DE_GRACIA
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.programar(i.id)
+    assert q.listos_para_publicar() == []          # todavía en ventana
+
+    viejo = datetime.now(timezone.utc) - timedelta(minutes=MINUTOS_DE_GRACIA + 1)
+    q.update(i.id, decidido=viejo.isoformat())
+    assert [x.id for x in q.listos_para_publicar()] == [i.id]
+
+
+def test_pararlo_dentro_de_la_ventana_lo_cancela(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.programar(i.id)
+    q.rechazar(i.id, motivo="parado a tiempo")
+    assert q.listos_para_publicar() == []
+    assert q.get(i.id).estado == "rechazado"
+
+
+def test_un_borrador_con_problemas_no_nace_programado(tmp_path):
+    """La publicación automática solo puede aplicarse a lo que pasó todas las
+    validaciones."""
+    q = Queue(tmp_path / "cola.jsonl")
+    malo = q.add(_draft("x", numeros_no_justificados=["$412"]),
+                 estado="programado")
+    assert malo.estado == "pendiente"
+    bueno = q.add(_draft("limpio"), estado="programado")
+    assert bueno.estado == "programado"
+
+
+def test_lo_aprobado_a_mano_sigue_saliendo(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.aprobar(i.id)
+    assert [x.id for x in q.listos_para_publicar()] == [i.id]
+
+
+def test_una_marca_corrupta_no_publica_por_error(tmp_path):
+    """Ante la duda, NO publicar: es la única acción irreversible."""
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"))
+    q.programar(i.id)
+    q.update(i.id, decidido="no-es-fecha")
+    assert q.listos_para_publicar() == []
