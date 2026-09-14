@@ -309,6 +309,117 @@ def responder(
         typer.echo(f"  -> cola id {item.id}")
 
 
+@app.command("watchlist")
+def watchlist(
+    add: str = typer.Option("", help="Añadir un handle."),
+    quitar: str = typer.Option("", help="Desactivar un handle (no se borra)."),
+) -> None:
+    """Las cuentas grandes que vigilamos para responderles."""
+    from xcreator.watchlist import Watchlist
+
+    _, s = _queue()
+    wl = Watchlist.cargar(s.watchlist_path)
+    if add:
+        c = wl.add(add)
+        typer.secho(f"Añadida {c.handle}", fg="green")
+    if quitar:
+        typer.secho(f"{'Desactivada ' + quitar if wl.desactivar(quitar) else 'No estaba: ' + quitar}",
+                    fg="yellow")
+    for c in wl.cuentas:
+        marca = " " if c.activa else "x"
+        typer.echo(f" [{marca}] {c.handle:<20} {c.angulo:<10} {c.tema}")
+        if c.notas:
+            typer.echo(f"                          {c.notas}")
+
+
+@app.command("vigilar")
+def vigilar(
+    limite: int = typer.Option(5, help="Posts a leer por cuenta (mínimo 5)."),
+    encolar: bool = typer.Option(True, help="Guardar los replies en la cola."),
+) -> None:
+    """Lee las cuentas vigiladas y propone replies donde tengamos datos.
+
+    El filtro determinista corre ANTES del modelo: de decenas de posts leídos,
+    solo los que mencionan un ticker que cubrimos llegan a generar texto. Por
+    eso vigilar mucho sale barato y responder sale caro — que es el orden
+    correcto.
+    """
+    from xcreator.brief import load_briefs
+    from xcreator.datos import live_price
+    from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
+    from xcreator.watchlist import Watchlist
+    from xcreator.xapi import ClienteX, XAPIError, costo_estimado
+
+    q, s = _queue()
+    wl = Watchlist.cargar(s.watchlist_path)
+    activas = wl.activas()
+    if not activas:
+        typer.secho("Watchlist vacía. `xc watchlist --add @cuenta`", fg="red",
+                    err=True)
+        raise typer.Exit(1)
+
+    est = costo_estimado(len(activas), limite)
+    typer.echo(f"{len(activas)} cuentas x {limite} posts — costo estimado "
+               f"${est:.3f} (tope ${s.x_presupuesto_pasada:.2f})\n")
+
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        typer.echo("\nMientras tanto puedes pegar un post a mano:\n"
+                   "  xc responder --autor @unusual_whales --texto \"...\"")
+        raise typer.Exit(1)
+
+    import json as _json
+
+    try:
+        ultimos = _json.loads(s.x_estado_path.read_text())
+    except (OSError, ValueError):
+        ultimos = {}
+
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key))
+    leidos = relevantes = encolados = 0
+
+    for cuenta in activas:
+        try:
+            posts = cliente.posts_recientes(
+                cuenta.handle, limite=limite,
+                desde_id=ultimos.get(cuenta.normalizado()))
+        except XAPIError as e:
+            typer.secho(f"  {cuenta.handle}: {e}", fg="yellow")
+            continue
+        leidos += len(posts)
+        if posts:
+            ultimos[cuenta.normalizado()] = posts[0].post_id
+
+        for p in posts:
+            m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
+                        post_id=p.post_id)
+            rel = encontrar_relevancia(m, briefs)
+            if not rel.aporta:
+                continue
+            relevantes += 1
+            if rel.brief:
+                rel.brief.angulo = cuenta.angulo  # el ángulo lo fija la cuenta
+            d = draft_reply(m, rel, s)
+            if d.declinado:
+                typer.echo(f"  {cuenta.handle}: declinado — {d.motivo}")
+                continue
+            estado = "OK" if d.valido else "REVISAR"
+            typer.secho(f"  [{estado}] {cuenta.handle} sobre ${rel.ticker}",
+                        fg="green" if d.valido else "yellow")
+            typer.echo(f"     {d.texto}")
+            if encolar:
+                encolados += 1
+                q.add(d)
+
+    s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
+    s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))
+    typer.echo(f"\n{leidos} posts leídos -> {relevantes} con datos nuestros "
+               f"-> {encolados} encolados. Gasto real: ${cliente.gastado:.3f}")
+
+
 @app.command("cola")
 def cola(todos: bool = typer.Option(False, help="Incluir ya decididos.")) -> None:
     """Lista los borradores pendientes de tu revisión."""

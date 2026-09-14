@@ -873,3 +873,116 @@ def test_mix_no_concluye_con_muestra_chica():
     m = mix_de_alcance(posts)
     assert not m.diferencia_es_solida
     assert "insuficiente" in m.veredicto
+
+
+# --- watchlist ------------------------------------------------------------
+
+def test_watchlist_se_siembra_y_persiste(tmp_path):
+    from xcreator.watchlist import SEMILLA, Watchlist
+
+    p = tmp_path / "wl.json"
+    wl = Watchlist.cargar(p)
+    assert len(wl.cuentas) == len(SEMILLA)
+    assert Watchlist.cargar(p).get("@zerohedge") is not None
+
+
+def test_watchlist_busca_sin_importar_arroba_ni_mayusculas(tmp_path):
+    from xcreator.watchlist import Watchlist
+
+    wl = Watchlist.cargar(tmp_path / "wl.json")
+    assert wl.get("ZeroHedge") is wl.get("@zerohedge")
+
+
+def test_desactivar_no_borra(tmp_path):
+    """Una cuenta que no rindió es información, no basura."""
+    from xcreator.watchlist import Watchlist
+
+    wl = Watchlist.cargar(tmp_path / "wl.json")
+    assert wl.desactivar("@business")
+    assert wl.get("@business") is not None
+    assert "@business" not in [c.handle for c in wl.activas()]
+
+
+def test_no_duplica_al_anadir(tmp_path):
+    from xcreator.watchlist import Watchlist
+
+    wl = Watchlist.cargar(tmp_path / "wl.json")
+    n = len(wl.cuentas)
+    wl.add("@zerohedge")
+    wl.add("zerohedge")
+    assert len(wl.cuentas) == n
+
+
+def test_json_corrupto_no_tumba_la_watchlist(tmp_path):
+    from xcreator.watchlist import Watchlist
+
+    p = tmp_path / "wl.json"
+    p.write_text("{roto")
+    assert Watchlist.cargar(p).cuentas  # cae a la semilla
+
+
+# --- API de X (costos y guardas) ------------------------------------------
+
+def test_sin_bearer_token_falla_claro(tmp_path):
+    from xcreator.xapi import ClienteX, XAPIError
+
+    with pytest.raises(XAPIError, match="X_BEARER_TOKEN"):
+        ClienteX("", tmp_path / "ids.json")
+
+
+def test_presupuesto_corta_antes_de_gastar(tmp_path):
+    """Un bucle con un bug no puede vaciar los créditos en una tarde."""
+    from xcreator.xapi import ClienteX, XAPIError
+
+    c = ClienteX("token", tmp_path / "ids.json", presupuesto_diario=0.02)
+    c._cobrar(0.015)
+    with pytest.raises(XAPIError, match="Presupuesto"):
+        c._cobrar(0.015)
+
+
+def test_user_id_se_cachea_para_no_repagar(tmp_path):
+    """Un handle siempre resuelve al mismo id; pagarlo dos veces es tirar dinero."""
+    from xcreator.xapi import ClienteX
+
+    cache = tmp_path / "ids.json"
+    cache.write_text('{"zerohedge": "123"}')
+    c = ClienteX("token", cache)
+    assert c.user_id("@ZeroHedge") == "123"
+    assert c.gastado == 0.0   # no se cobró: vino del caché
+
+
+def test_costo_estimado_incluye_resolver_handles():
+    from xcreator.xapi import COSTO_USUARIO_LEIDO, costo_estimado
+
+    con = costo_estimado(7, 5, ids_en_cache=False)
+    sin = costo_estimado(7, 5, ids_en_cache=True)
+    assert con - sin == pytest.approx(7 * COSTO_USUARIO_LEIDO)
+
+
+def test_solo_se_cobra_lo_que_de_verdad_se_leyo(tmp_path, monkeypatch):
+    """Con `since_id`, muchas pasadas traen cero posts y no deben costar."""
+    from xcreator.xapi import COSTO_POST_LEIDO, ClienteX
+
+    cache = tmp_path / "ids.json"
+    cache.write_text('{"zerohedge": "1"}')
+    c = ClienteX("token", cache, presupuesto_diario=10.0)
+    monkeypatch.setattr(c, "_get", lambda ruta, **kw: {"data": [
+        {"id": "9", "text": "algo"}]})
+    c.posts_recientes("@zerohedge", limite=20)
+    assert c.gastado == pytest.approx(COSTO_POST_LEIDO * 1)
+
+
+def test_una_llamada_fallida_no_cobra(tmp_path, monkeypatch):
+    from xcreator.xapi import ClienteX, XAPIError
+
+    cache = tmp_path / "ids.json"
+    cache.write_text('{"zerohedge": "1"}')
+    c = ClienteX("token", cache, presupuesto_diario=10.0)
+
+    def explota(ruta, **kw):
+        raise XAPIError("429")
+
+    monkeypatch.setattr(c, "_get", explota)
+    with pytest.raises(XAPIError):
+        c.posts_recientes("@zerohedge", limite=20)
+    assert c.gastado == 0.0

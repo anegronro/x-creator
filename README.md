@@ -108,6 +108,31 @@ nuestras cifras aporten a ESE post.
 Un asistente que siempre encuentra algo que decir es una máquina de spam, y
 es exactamente lo que X penaliza.
 
+## Vigilar cuentas grandes
+
+```bash
+xc watchlist                 # las cuentas que vigilamos
+xc watchlist --add @cuenta
+xc vigilar                   # lee, filtra y propone replies
+```
+
+El filtro determinista corre **antes** del modelo: de decenas de posts
+leídos, solo los que mencionan un ticker que cubrimos generan texto. Por eso
+vigilar sale barato y responder sale caro, que es el orden correcto.
+
+Costos reales de la API de X ($0.005 por post leído, $0.010 por usuario):
+
+| Pasadas/día | 5 posts × 7 cuentas |
+|---|---|
+| 2 | ~$10/mes |
+| 4 | ~$21/mes |
+
+Dos cosas abaratan esto de verdad: los user_id se cachean en disco (un handle
+nunca cambia de id) y `since_id` evita releer lo ya visto — una pasada sin
+posts nuevos no cuesta nada, porque solo se cobra lo devuelto. Hay además un
+tope por pasada (`X_PRESUPUESTO_PASADA`) para que un bucle con un bug no
+vacíe los créditos.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).

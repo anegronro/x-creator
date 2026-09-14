@@ -32,6 +32,11 @@ class Settings:
     census_api_key: str | None = None
     oanda_token: str | None = None
     oanda_account_id: str | None = None
+    # Lectura de la API de X (solo lectura; publicar es otro permiso).
+    x_bearer_token: str | None = None
+    # Tope de gasto por pasada. Un bucle con un bug no puede vaciar los
+    # créditos en una tarde.
+    x_presupuesto_pasada: float = 0.50
     # Bot PROPIO. Sin fallback a ningún TELEGRAM_BOT_TOKEN genérico: un
     # fallback silencioso mandaría estos posts al chat de otro agente.
     telegram_bot_token: str | None = None
@@ -40,6 +45,18 @@ class Settings:
     reportes_dir: Path | None = None
     cerebro_dir: Path | None = None
     root: Path = field(default_factory=_root)
+
+    @property
+    def watchlist_path(self) -> Path:
+        return self.root / "Contenido" / "watchlist.json"
+
+    @property
+    def x_cache_path(self) -> Path:
+        return self.root / "Contenido" / "x_ids.json"
+
+    @property
+    def x_estado_path(self) -> Path:
+        return self.root / "Contenido" / "x_ultimos.json"
 
     @property
     def cola_path(self) -> Path:
@@ -80,6 +97,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         census_api_key=get("CENSUS_API_KEY"),
         oanda_token=get("OANDA_TOKEN"),
         oanda_account_id=get("OANDA_ACCOUNT_ID"),
+        x_bearer_token=get("X_BEARER_TOKEN"),
+        x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_X_CHAT_ID"),
         reportes_dir=Path(reportes).expanduser() if reportes else None,
