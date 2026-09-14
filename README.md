@@ -131,6 +131,27 @@ repetirlo en cada post es ruido.
 Requiere el scope `media.write` en el token de OAuth; sin él, `/2/media/upload`
 devuelve un 403 escueto que no menciona los scopes.
 
+## Contenido macro
+
+```bash
+xc redactar --macro
+```
+
+Posts de mercado y economía sin empresa concreta, **además** de los de
+ticker. Amplían el repertorio y llegan a gente que sigue macro pero no sigue
+nombres.
+
+Los datos salen de FRED (curva 10y-2y, bono a 10 años, desempleo, CPI,
+hipoteca a 30 años, fed funds, spread high-yield) y cada cifra viaja con su
+serie y su fecha. Lo que hace noticiable a un dato se **calcula** —dónde está
+respecto a su propia historia y cuánto se movió— en vez de afirmarse: un dato
+en su media no es un post.
+
+Con una guarda que costó un bug: el percentil y el recorrido son relativos,
+así que una serie que oscila entre 4.00 y 4.02 puntuaba como extremo
+histórico. Si el rango completo es menor al 5% del nivel, la serie está plana
+y no hay tema.
+
 ## Qué publicar hoy
 
 ```bash

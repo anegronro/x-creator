@@ -1971,3 +1971,85 @@ def test_publicar_pone_los_replies_primero(tmp_path):
     items = sorted(q.listos_para_publicar(),
                    key=lambda i: 0 if i.kind == "reply" else 1)
     assert items[0].id == reply.id
+
+
+# --- contenido macro ------------------------------------------------------
+
+def _serie(valores, desde="2024-01-01"):
+    from datetime import date, timedelta
+
+    d0 = date.fromisoformat(desde)
+    return [(str(d0 + timedelta(days=i * 7)), v) for i, v in enumerate(valores)]
+
+
+def test_un_dato_en_su_media_no_es_un_post():
+    """Sin tensión no hay conversación: publicar por publicar es peor que
+    no publicar."""
+    from xcreator.macro import SERIES, leer
+
+    # Oscila entre 4.00 y 4.02: el percentil dice "máximo histórico" pero el
+    # recorrido es de dos centésimas. Eso no es noticia.
+    plano = _serie([4.0 + (i % 3) * 0.01 for i in range(60)])
+    l = leer(SERIES["tasa10"], plano)
+    assert l.plana
+    assert l.tension == 0
+
+
+def test_un_extremo_historico_si_lo_es():
+    from xcreator.macro import SERIES, leer
+
+    subiendo = _serie([3.0 + i * 0.03 for i in range(60)])
+    l = leer(SERIES["tasa10"], subiendo)
+    assert l.percentil_5a == 1.0
+    assert l.tension >= 3
+
+
+def test_serie_corta_no_produce_lectura():
+    from xcreator.macro import SERIES, leer
+
+    assert leer(SERIES["tasa10"], _serie([4.0, 4.1, 4.2])) is None
+
+
+def test_el_brief_macro_no_lleva_empresa():
+    """Sin ticker no aplica la regla del cashtag: no hay empresa de la que
+    hablar y forzar una sería inventarla."""
+    from xcreator.generate import falta_ticker
+    from xcreator.macro import SERIES, brief_macro, leer
+
+    b = brief_macro(leer(SERIES["tasa10"], _serie([3.0 + i * 0.03 for i in range(60)])))
+    assert b.ticker == ""
+    assert b.kind == "macro"
+    assert falta_ticker("The 10-year is 4.95%.", b.ticker) == []
+
+
+def test_las_cifras_macro_llevan_su_fuente_y_fecha():
+    from xcreator.macro import SERIES, brief_macro, leer
+
+    b = brief_macro(leer(SERIES["tasa10"], _serie([3.0 + i * 0.03 for i in range(60)])))
+    assert b.facts and all("FRED" in f.source for f in b.facts)
+    assert all("dato del" in f.source for f in b.facts)
+
+
+def test_los_huecos_de_fred_no_se_leen_como_ceros(monkeypatch):
+    """FRED marca los días sin dato con '.', y tomarlos por cero hundiría
+    cualquier media."""
+    import httpx
+
+    from xcreator.datos import fred_series
+
+    monkeypatch.setattr(httpx, "get", lambda *a, **kw: httpx.Response(
+        200, request=httpx.Request("GET", "https://fred"),
+        json={"observations": [
+            {"date": "2026-09-01", "value": "4.95"},
+            {"date": "2026-09-02", "value": "."},
+            {"date": "2026-09-03", "value": "4.97"},
+        ]}))
+    assert fred_series("DGS10", "k") == [("2026-09-01", 4.95), ("2026-09-03", 4.97)]
+
+
+def test_sin_clave_de_fred_no_hay_macro_pero_no_revienta():
+    from xcreator.datos import fred_series
+    from xcreator.macro import mejores_temas
+
+    assert fred_series("DGS10", None) == []
+    assert mejores_temas(None) == []

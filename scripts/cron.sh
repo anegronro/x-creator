@@ -2,7 +2,7 @@
 # Tareas programadas de x-creator. Una sola entrada por tarea en el crontab,
 # para que el log y el manejo de errores vivan aquí y no en la línea del cron.
 #
-# Uso: cron.sh <telegram|vigilar|redactar|publicar>
+# Uso: cron.sh <telegram|vigilar|redactar|macro|publicar>
 set -uo pipefail
 
 # La raíz se deriva de DÓNDE ESTÁ este script, nunca de $HOME: en la Mac el
@@ -55,6 +55,13 @@ case "${1:-}" in
     registrar "redactar: $(echo "$salida" | tail -4)"
     exit $codigo
     ;;
+  macro)
+    # Un post de mercado/economía al día. ADICIONAL a los de empresa: amplía
+    # el repertorio y llega a gente que sigue macro pero no sigue tickers.
+    salida=$("$XC" redactar --macro --n 2 2>&1); codigo=$?
+    registrar "macro: $(echo "$salida" | tail -4)"
+    exit $codigo
+    ;;
   publicar)
     # Publica lo aprobado, de uno en uno y con hora y media de separación.
     # "Aprobar = publicar" sin espaciado vacía la cola de golpe, y ocho posts
@@ -66,7 +73,7 @@ case "${1:-}" in
     exit $codigo
     ;;
   *)
-    echo "uso: cron.sh <telegram|vigilar|redactar|publicar>" >&2
+    echo "uso: cron.sh <telegram|vigilar|redactar|macro|publicar>" >&2
     exit 2
     ;;
 esac

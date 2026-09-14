@@ -133,3 +133,35 @@ def price_history(ticker: str, api_key: str | None, *, dias: int = 180,
         if fecha and isinstance(cierre, (int, float)):
             out.append((fecha, float(cierre)))
     return sorted(out)
+
+
+def fred_series(serie: str, api_key: str | None, *, limite: int = 400,
+                timeout: float = 20.0) -> list[tuple[str, float]]:
+    """[(fecha, valor)] de una serie de FRED, de la más vieja a la más nueva.
+
+    Devuelve [] si falla: sin macro se sigue publicando de empresas.
+    """
+    if not api_key:
+        return []
+    try:
+        r = httpx.get(
+            "https://api.stlouisfed.org/fred/series/observations",
+            params={"series_id": serie, "api_key": api_key,
+                    "file_type": "json", "sort_order": "desc",
+                    "limit": limite},
+            timeout=timeout,
+        )
+        r.raise_for_status()
+        obs = r.json().get("observations", [])
+    except (httpx.HTTPError, ValueError):
+        return []
+    out = []
+    for o in obs:
+        # FRED marca los huecos con "." — son días sin dato, no ceros.
+        if o.get("value") in (None, ".", ""):
+            continue
+        try:
+            out.append((o["date"], float(o["value"])))
+        except (KeyError, ValueError):
+            continue
+    return sorted(out)

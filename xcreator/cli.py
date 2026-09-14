@@ -120,6 +120,8 @@ def redactar(
         False,
         help="Elegir solo el tema con más tensión y rotar el ángulo por día.",
     ),
+    macro: bool = typer.Option(
+        False, help="Post de mercado/economía, sin empresa concreta."),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
     from xcreator.brief import load_briefs
@@ -128,6 +130,10 @@ def redactar(
     from xcreator.generate import draft_posts
 
     q, s = _queue()
+
+    if macro:
+        _redactar_macro(q, s, n=n, encolar=encolar)
+        return
 
     lecciones = []
     if csv:
@@ -636,6 +642,40 @@ def publicar(
                     "`xc publicar --no-en-seco`", bold=True)
     else:
         typer.echo(f"\n{publicados} publicado(s).")
+
+
+def _redactar_macro(q, s, *, n: int, encolar: bool) -> None:
+    """Post de mercado/economía. Complementa a los de empresa, no los sustituye."""
+    from xcreator.generate import draft_posts
+    from xcreator.macro import brief_macro, mejores_temas
+
+    temas = mejores_temas(s.fred_api_key)
+    if not temas:
+        typer.secho("Ninguna serie macro tiene algo que contar hoy. Un dato "
+                    "en su media no es un post.", fg="yellow")
+        return
+
+    lectura = temas[0]
+    brief = brief_macro(lectura)
+    typer.echo(f"Macro: {lectura.cfg.serie} — {lectura.valor:.2f} "
+               f"(percentil {lectura.percentil_5a:.0%}, "
+               f"{lectura.tension:.0f} pts de tensión)")
+    typer.echo(f"Ángulo: {brief.angle}\n")
+
+    for d in draft_posts(brief, s, n=n):
+        estado = "OK" if d.valido else "REVISAR"
+        typer.secho(f"[{estado}] {d.approach}", fg="green" if d.valido else "yellow")
+        typer.echo(f"  {d.text}  ({len(d.text)} c)")
+        for i, t in enumerate(d.thread, 2):
+            typer.echo(f"  {i}/ {t}  ({len(t)} c)")
+        if d.numeros_no_justificados:
+            typer.secho(f"  CIFRAS SIN FUENTE: {d.numeros_no_justificados}", fg="red")
+        if d.truncado:
+            typer.secho("  TEXTO CORTADO — no publicar así", fg="red")
+        if encolar:
+            item = q.add(d, estado="programado" if d.valido else "pendiente")
+            typer.echo(f"  -> cola id {item.id}")
+        typer.echo("")
 
 
 def _grafico_para(brief, settings, item_id: str):
