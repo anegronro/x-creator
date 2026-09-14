@@ -1089,3 +1089,136 @@ def test_la_cola_persiste_el_flag_de_idioma(tmp_path):
     q = Queue(tmp_path / "cola.jsonl")
     i = q.add(_draft("texto", idioma_incorrecto=True))
     assert q.get(i.id).idioma_incorrecto is True
+
+
+# --- publicar: la única acción irreversible -------------------------------
+
+def _item_aprobado(tmp_path, texto="A clean English post about $NVDA.", **kw):
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft(texto, **kw))
+    q.aprobar(i.id)
+    return q, q.get(i.id)
+
+
+def test_no_publica_lo_no_aprobado(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("A clean English post."))
+    problemas = revisar_antes_de_publicar(q.get(i.id))
+    assert any("solo se publica lo aprobado" in p for p in problemas)
+
+
+def test_no_publica_lo_rechazado(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("A clean English post."))
+    q.rechazar(i.id, motivo="malo")
+    assert revisar_antes_de_publicar(q.get(i.id))
+
+
+def test_revalida_el_texto_EDITADO_no_el_original(tmp_path):
+    """Entre aprobar y publicar el texto pudo cambiar: manda el final."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("A clean English post."))
+    q.aprobar(i.id, texto_editado="El precio está fuera del rango.")
+    problemas = revisar_antes_de_publicar(q.get(i.id))
+    assert any("no está en inglés" in p for p in problemas)
+
+
+def test_bloquea_links_salvo_que_se_pidan(tmp_path):
+    """Un link cuesta 13x y hunde el alcance: no puede colarse por descuido."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(tmp_path, "Read this https://t.co/abc for the data.")
+    assert any("link" in p for p in revisar_antes_de_publicar(item))
+    assert not revisar_antes_de_publicar(item, permitir_link=True)
+
+
+def test_bloquea_cifras_sin_fuente_en_el_texto_final(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(tmp_path, "Margins hit 78.2% last quarter.")
+    problemas = revisar_antes_de_publicar(item, numeros_permitidos=[196.53])
+    assert any("sin fuente" in p for p in problemas)
+
+
+def test_bloquea_texto_que_se_pasa_de_largo(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(tmp_path, "The data is here. " * 30)
+    assert any("se pasa" in p for p in revisar_antes_de_publicar(item))
+
+
+def test_costo_del_link_es_13x():
+    from xcreator.publicar import COSTO_POST, COSTO_POST_CON_LINK, costo
+
+    assert costo(["no link here"]) == COSTO_POST
+    assert costo(["see https://t.co/x"]) == COSTO_POST_CON_LINK
+    assert COSTO_POST_CON_LINK / COSTO_POST > 13
+
+
+def test_en_seco_no_llama_a_x(tmp_path):
+    from xcreator.publicar import publicar_item
+
+    _, item = _item_aprobado(tmp_path)
+    res = publicar_item(item, token="", en_seco=True)
+    assert res.post_id == "(en seco)"
+
+
+def test_publicar_marca_el_item_y_no_repite(tmp_path):
+    """Duplicar un post en X es caro y feo: publicado ya no es aprobado."""
+    q, item = _item_aprobado(tmp_path)
+    q.marcar_publicado(item.id, post_id="123")
+    assert q.get(item.id).estado == "publicado"
+    assert [i for i in q.load() if i.estado == "aprobado"] == []
+
+
+# --- OAuth ----------------------------------------------------------------
+
+def test_sin_client_id_falla_claro(tmp_path):
+    from xcreator.xauth import AlmacenTokens, AuthError, autorizar
+
+    with pytest.raises(AuthError, match="X_CLIENT_ID"):
+        autorizar("", AlmacenTokens(tmp_path / "t.json"), abrir_navegador=False)
+
+
+def test_sin_autorizar_lo_dice_en_vez_de_dar_401(tmp_path):
+    from xcreator.xauth import AlmacenTokens, AuthError, token_vigente
+
+    with pytest.raises(AuthError, match="x-auth"):
+        token_vigente("cid", AlmacenTokens(tmp_path / "t.json"))
+
+
+def test_token_vigente_no_refresca_de_mas(tmp_path):
+    import time
+
+    from xcreator.xauth import AlmacenTokens, Tokens, token_vigente
+
+    a = AlmacenTokens(tmp_path / "t.json")
+    a.guardar(Tokens("vivo", "refresh", time.time() + 3600))
+    assert token_vigente("cid", a).access_token == "vivo"
+
+
+def test_token_vencido_sin_refresh_pide_reautorizar(tmp_path):
+    import time
+
+    from xcreator.xauth import AlmacenTokens, AuthError, Tokens, token_vigente
+
+    a = AlmacenTokens(tmp_path / "t.json")
+    a.guardar(Tokens("viejo", "", time.time() - 10))
+    with pytest.raises(AuthError, match="refresh"):
+        token_vigente("cid", a)
+
+
+def test_los_tokens_se_guardan_con_permisos_restringidos(tmp_path):
+    import time
+
+    from xcreator.xauth import AlmacenTokens, Tokens
+
+    p = tmp_path / "t.json"
+    AlmacenTokens(p).guardar(Tokens("secreto", "r", time.time() + 60))
+    assert oct(p.stat().st_mode)[-3:] == "600"

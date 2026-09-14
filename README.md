@@ -148,6 +148,34 @@ posts nuevos no cuesta nada, porque solo se cobra lo devuelto. Hay además un
 tope por pasada (`X_PRESUPUESTO_PASADA`) para que un bucle con un bug no
 vacíe los créditos.
 
+## Publicar
+
+```bash
+xc x-auth                      # una vez: autorizas la app en TU navegador
+xc publicar                    # EN SECO por defecto: enseña qué saldría
+xc publicar --no-en-seco       # publica de verdad
+```
+
+Publicar es la única acción irreversible del sistema, así que el modo en seco
+es el que manda por defecto y hay que pedir lo contrario explícitamente.
+Cuatro guardas antes de cada envío:
+
+- **Solo se publica lo aprobado.** El estado se comprueba en el publicador,
+  no en el CLI.
+- **Se revalida el texto FINAL**, no el original: entre aprobar y publicar
+  pudo editarse, y manda lo editado. Se vuelven a comprobar cifras sin
+  fuente, largo e idioma.
+- **Los links se bloquean** salvo `--permitir-link`: cuestan $0.20 en vez de
+  $0.015 y hunden el alcance.
+- **Idempotencia**: lo publicado deja de estar aprobado, así que correr el
+  comando dos veces no duplica nada.
+
+Los hilos se encadenan solos, y un reply cuelga del post original.
+
+Las credenciales son dos y distintas: el **bearer token** (app-only) solo
+lee; publicar necesita **OAuth 2.0 de usuario**, que autorizas tú en tu
+navegador. Aquí nunca se ve ni se pide una contraseña.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).

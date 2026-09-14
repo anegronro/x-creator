@@ -453,6 +453,89 @@ def temas(
                     "es peor que no publicar.", fg="yellow")
 
 
+@app.command("x-auth")
+def x_auth() -> None:
+    """Autoriza la app para publicar en tu nombre (lo haces tú, en tu navegador)."""
+    from xcreator.xauth import CALLBACK, AlmacenTokens, AuthError, autorizar
+
+    _, s = _queue()
+    try:
+        t = autorizar(s.x_client_id or "", AlmacenTokens(s.x_tokens_path),
+                      client_secret=s.x_client_secret or "")
+    except AuthError as e:
+        typer.secho(str(e), fg="red", err=True)
+        typer.echo(f"\nEn la app de X, el callback debe ser exactamente:\n  {CALLBACK}")
+        raise typer.Exit(1)
+    typer.secho("Autorizado. Ya se puede publicar.", fg="green")
+    typer.echo(f"  refresh token: {'sí' if t.refresh_token else 'NO — tendrás que reautorizar cada 2h'}")
+
+
+@app.command("publicar")
+def publicar(
+    item_id: str = typer.Option("", help="Publicar solo este. Vacío = todos los aprobados."),
+    en_seco: bool = typer.Option(True, help="Sin --no-en-seco no se publica nada."),
+    permitir_link: bool = typer.Option(False, help="Permitir links (cuestan 13x)."),
+) -> None:
+    """Publica en X lo que YA aprobaste. En seco por defecto.
+
+    El modo en seco es el que manda a propósito: publicar es la única acción
+    irreversible de todo el sistema, así que hay que pedirla explícitamente.
+    """
+    from xcreator.publicar import (
+        PublicarError, costo, publicar_item, revisar_antes_de_publicar,
+    )
+    from xcreator.xauth import AlmacenTokens, AuthError, token_vigente
+
+    q, s = _queue()
+    items = [q.get(item_id)] if item_id else [
+        i for i in q.load() if i.estado == "aprobado"]
+    items = [i for i in items if i is not None]
+    if not items:
+        typer.echo("Nada aprobado que publicar. Aprueba desde Telegram o con "
+                   "`xc aprobar <id>`.")
+        return
+
+    total = sum(costo([i.texto_final, *i.hilo]) for i in items)
+    typer.echo(f"{len(items)} publicación(es) — costo estimado ${total:.3f}\n")
+
+    token = ""
+    if not en_seco:
+        try:
+            token = token_vigente(s.x_client_id or "",
+                                  AlmacenTokens(s.x_tokens_path),
+                                  client_secret=s.x_client_secret or "").access_token
+        except AuthError as e:
+            typer.secho(str(e), fg="red", err=True)
+            raise typer.Exit(1)
+
+    publicados = 0
+    for i in items:
+        problemas = revisar_antes_de_publicar(i, permitir_link=permitir_link)
+        if problemas:
+            typer.secho(f"[NO] {i.id} {i.ticker}", fg="red")
+            for p in problemas:
+                typer.echo(f"     {p}")
+            continue
+        if en_seco:
+            typer.secho(f"[seco] {i.id} {i.ticker} — se publicaría:", fg="yellow")
+            typer.echo(f"     {i.texto_final[:120]}")
+            continue
+        try:
+            res = publicar_item(i, token, handle=s.x_handle or "")
+        except PublicarError as e:
+            typer.secho(f"[FALLÓ] {i.id}: {e}", fg="red")
+            continue
+        q.marcar_publicado(i.id, post_id=res.post_id)
+        publicados += 1
+        typer.secho(f"[OK] {i.id} -> {res.url}", fg="green")
+
+    if en_seco:
+        typer.secho("\nEsto fue en seco. Para publicar de verdad: "
+                    "`xc publicar --no-en-seco`", bold=True)
+    else:
+        typer.echo(f"\n{publicados} publicado(s).")
+
+
 @app.command("cola")
 def cola(todos: bool = typer.Option(False, help="Incluir ya decididos.")) -> None:
     """Lista los borradores pendientes de tu revisión."""

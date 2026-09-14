@@ -32,8 +32,13 @@ class Settings:
     census_api_key: str | None = None
     oanda_token: str | None = None
     oanda_account_id: str | None = None
-    # Lectura de la API de X (solo lectura; publicar es otro permiso).
+    # Lectura de la API de X (app-only: NO puede publicar).
     x_bearer_token: str | None = None
+    # Publicación en nombre del usuario (OAuth 2.0 user context). El login lo
+    # hace Angel en su navegador; aquí nunca se ve una contraseña.
+    x_client_id: str | None = None
+    x_client_secret: str | None = None
+    x_handle: str | None = None
     # Tope de gasto por pasada. Un bucle con un bug no puede vaciar los
     # créditos en una tarde.
     x_presupuesto_pasada: float = 0.50
@@ -45,6 +50,10 @@ class Settings:
     reportes_dir: Path | None = None
     cerebro_dir: Path | None = None
     root: Path = field(default_factory=_root)
+
+    @property
+    def x_tokens_path(self) -> Path:
+        return self.root / "Contenido" / "x_tokens.json"
 
     @property
     def watchlist_path(self) -> Path:
@@ -98,6 +107,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
         oanda_token=get("OANDA_TOKEN"),
         oanda_account_id=get("OANDA_ACCOUNT_ID"),
         x_bearer_token=get("X_BEARER_TOKEN"),
+        x_client_id=get("X_CLIENT_ID"),
+        x_client_secret=get("X_CLIENT_SECRET"),
+        x_handle=get("X_HANDLE"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),
         telegram_chat_id=get("TELEGRAM_X_CHAT_ID"),
