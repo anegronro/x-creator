@@ -181,6 +181,9 @@ def brief_macro(lectura: Lectura) -> Brief:
             f"DI SIEMPRE de qué hablas: el post tiene que nombrar "
             f"{c.nombre} con todas sus letras. Un porcentaje suelto no dice "
             f"nada — el lector no tiene por qué adivinar qué mide ese número.",
+            "NO te atribuyas llamadas pasadas. No hay ninguna predicción "
+            "guardada sobre esta serie, así que 'hace un año pensé que...' "
+            "sería un invento sobre el historial de quien publica.",
             "Conecta el dato con lo que implica para los múltiplos o el "
             "apetito de riesgo, que es lo que le importa a la audiencia.",
         ],

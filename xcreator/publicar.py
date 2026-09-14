@@ -23,7 +23,8 @@ from pathlib import Path
 import httpx
 
 from xcreator.generate import (
-    MAX_CHARS, es_ingles, falta_sujeto, falta_ticker, validate_numbers,
+    MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, es_ingles, falta_sujeto,
+    falta_ticker, validate_numbers,
 )
 
 POST_URL = "https://api.x.com/2/tweets"
@@ -108,6 +109,15 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
         if faltan:
             problemas.append(
                 f"falta el ticker en el texto final: {', '.join(faltan)}")
+    # Macro y cripto no tienen predicciones guardadas, así que atribuirse una
+    # llamada pasada es inventar el historial de Angel y publicarlo con su
+    # nombre. Las cifras pueden ser correctas y la frase seguir siendo falsa.
+    if item.kind in SIN_HISTORIAL:
+        inventadas = afirma_llamada_propia("\n".join(piezas))
+        if inventadas:
+            problemas.append(
+                f"se atribuye una predicción que no existe ({', '.join(inventadas)}): "
+                f"en {item.kind} no hay historial guardado que respalde eso")
     # Un post de macro no tiene cashtag que diga de qué habla, así que aquí
     # se exige que nombre algún sujeto reconocible. La comprobación es más
     # gruesa que la de generación —el item no guarda de qué serie salió— pero

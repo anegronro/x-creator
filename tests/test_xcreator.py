@@ -2406,3 +2406,129 @@ def test_la_ventana_de_veto_se_respeta_en_el_automatico(tmp_path):
     q.add(_draft("$NVDA holds. NVDA at 44x.", ticker="NVDA"),
           estado="programado")
     assert q.listos_para_publicar() == []
+
+
+# --- cripto: hechos de precio, nunca un modelo de valor -------------------
+
+def _serie_cripto(precios):
+    from datetime import date, timedelta
+    hoy = date(2026, 9, 14)
+    return [(str(hoy - timedelta(days=len(precios) - 1 - i)), p)
+            for i, p in enumerate(precios)]
+
+
+def test_cripto_no_pretende_tener_un_rango_de_valor():
+    """Sin filings no hay flujo que descontar: un precio objetivo aquí sería
+    justo el número sin fórmula que el resto del sistema impide."""
+    from xcreator.cripto import ACTIVOS, brief_cripto, leer
+
+    lec = leer(ACTIVOS["btc"], _serie_cripto([50000 + i * 100 for i in range(120)]))
+    b = brief_cripto(lec)
+    texto = " ".join(b.context).lower()
+    assert "no tienes un rango objetivo" in texto
+    assert "prohibido dar un precio objetivo" in texto
+    etiquetas = " ".join(f.label.lower() for f in b.facts)
+    for inventado in ("base", "bear", "bull", "objetivo", "target"):
+        assert inventado not in etiquetas
+
+
+def test_cripto_exige_el_cashtag_y_el_nombre():
+    """En X, $BTC se indexa igual que una acción: la regla sí aplica."""
+    from xcreator.cripto import ACTIVOS, brief_cripto, leer
+    from xcreator.generate import falta_sujeto, falta_ticker
+
+    lec = leer(ACTIVOS["xrp"], _serie_cripto([1.0 + i * 0.01 for i in range(120)]))
+    b = brief_cripto(lec)
+    assert b.ticker == "XRP"
+    assert falta_ticker("XRP just printed a high.", b.ticker) == ["$XRP"]
+    assert falta_ticker("$XRP and XRP both here.", b.ticker) == []
+    assert falta_sujeto("Something moved 12% today.", b.sujeto)
+    assert not falta_sujeto("Ripple's token moved; XRP is the asset.", b.sujeto)
+
+
+def test_el_precio_casi_inmovil_no_puntua_como_record():
+    """El percentil es relativo: con un recorrido minúsculo, el último dato
+    sale como máximo histórico. Le pasó a macro y aquí sería peor."""
+    from xcreator.cripto import ACTIVOS, leer
+
+    plano = leer(ACTIVOS["btc"], _serie_cripto([50000 + (i % 3) for i in range(120)]))
+    assert plano.percentil == 1.0, "efectivamente sale como máximo"
+    assert plano.plana
+    assert plano.tension == 0
+
+
+def test_cripto_puntua_mas_una_caida_mas_honda():
+    from xcreator.cripto import ACTIVOS, leer
+
+    subida = [40000 + i * 500 for i in range(80)]           # hasta ~79.500
+    leve = leer(ACTIVOS["btc"],
+                _serie_cripto(subida + [79500 - i * 600 for i in range(40)]))
+    honda = leer(ACTIVOS["btc"],
+                 _serie_cripto(subida + [79500 - i * 1100 for i in range(40)]))
+    assert 20 < leve.caida_desde_maximo < 40
+    assert honda.caida_desde_maximo > 40
+    assert honda.tension > leve.tension >= 1
+
+
+def test_la_volatilidad_de_cripto_se_anualiza_con_365():
+    """Cotiza los siete días; usar 252 la infravaloraría un 20%."""
+    from xcreator.cripto import _volatilidad_anualizada
+
+    import statistics
+    precios = [100 * (1.01 if i % 2 else 0.99) ** 1 for i in range(100)]
+    serie = [100.0]
+    for i in range(1, 100):
+        serie.append(serie[-1] * (1.02 if i % 2 else 0.98))
+    ret = [(b - a) / a for a, b in zip(serie, serie[1:])]
+    esperado = statistics.stdev(ret) * (365 ** 0.5) * 100
+    assert abs(_volatilidad_anualizada(serie) - esperado) < 1e-6
+
+
+def test_cada_activo_declara_como_se_llama():
+    from xcreator.cripto import ACTIVOS
+
+    for clave, cfg in ACTIVOS.items():
+        assert cfg.alias, f"{clave} no declara alias"
+        assert cfg.ticker and not cfg.ticker.startswith("$")
+
+
+# --- no inventarse un historial que no existe -----------------------------
+
+def test_no_puede_atribuirse_una_llamada_que_nunca_hizo():
+    """Dos estuvieron a punto de publicarse: «A year ago I thought 4.04% was
+    the cycle ceiling» y «My miss: I called Ether dead money». Las cifras
+    salían del brief; la afirmación era inventada."""
+    from xcreator.generate import afirma_llamada_propia as f
+
+    assert f("My miss: I called Ether dead money at $1,880.94 a month ago.")
+    assert f("A year ago I thought 4.04% was the cycle ceiling. Wrong.")
+    assert f("We predicted a break below $60,000.")
+    assert f("I was wrong about the curve.")
+
+
+def test_no_confunde_opinion_presente_con_llamada_pasada():
+    from xcreator.generate import afirma_llamada_propia as f
+
+    assert f("I think the multiple is wrong.") == []
+    assert f("Bitcoin is $78,818.79 today, was $65,000 ninety days ago.") == []
+    assert f("Nobody called this.") == []
+
+
+def test_publicar_bloquea_el_historial_inventado_en_cripto(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "My miss: I called $BTC dead money. BTC is $78,818.79 now.",
+        ticker="BTC", kind="cripto")
+    assert any("predicción que no existe" in p
+               for p in revisar_antes_de_publicar(item))
+
+
+def test_el_post_de_empresa_si_puede_citar_su_propia_llamada(tmp_path):
+    """Ahí sí hay predicción guardada: el motor la escribió y es comprobable."""
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path, "Our bear case on $NVDA was $194.56. NVDA never touched it.",
+        ticker="NVDA", kind="thesis_check")
+    assert revisar_antes_de_publicar(item) == []

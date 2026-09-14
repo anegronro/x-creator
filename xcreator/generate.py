@@ -26,6 +26,9 @@ from xcreator.brief import Brief
 
 MODEL = "claude-opus-5"
 MAX_CHARS = 280
+# Tipos de brief sin predicciones guardadas: ahí no hay llamada pasada que
+# citar, así que atribuirse una es inventarla.
+SIN_HISTORIAL = ("macro", "cripto")
 
 
 # --- Validación numérica (determinista, sin modelo) -----------------------
@@ -180,6 +183,41 @@ _CIERRES = ".!?\"')]}…"
 _SALTO_ROTO = re.compile(r"[^.!?:\"')\]}…\n]\s*\n\s*[a-z]")
 
 
+# Formas de atribuirse una llamada pasada. En un post de empresa esto es
+# legítimo y además funciona: el motor guarda las predicciones y el brief de
+# `thesis_check` las trae, así que "nuestro bear case era $194.56" es
+# comprobable. En macro y en cripto NO hay predicciones guardadas —ninguna—,
+# así que la misma frase es un invento sobre el historial de Angel, publicado
+# con su nombre. Dos veces estuvo a punto de salir: "A year ago I thought
+# 4.04% was the cycle ceiling" y "My miss: I called Ether dead money".
+_LLAMADA_PROPIA = [
+    re.compile(p, re.IGNORECASE) for p in (
+        r"\b(?:i|we)\s+(?:called|said|thought|predicted|forecast|modell?ed|"
+        r"published|flagged|warned|argued|claimed)\b",
+        r"\b(?:i|we)\s+(?:was|were)\s+wrong\b",
+        r"\bmy\s+(?:miss|call|bad|bear case|base case|bull case|target|"
+        r"forecast|model)\b",
+        r"\bour\s+(?:miss|call|bear case|base case|bull case|target|"
+        r"forecast|model)\b",
+        r"\b(?:last|a)\s+(?:year|month|quarter)\s+i\b",
+    )
+]
+
+
+def afirma_llamada_propia(texto: str) -> list[str]:
+    """Trozos donde el post se atribuye una predicción pasada.
+
+    Solo se usa donde no hay historial que respalde la afirmación. Lista
+    vacía = el post no presume de nada que no se pueda comprobar.
+    """
+    encontrados = []
+    for patron in _LLAMADA_PROPIA:
+        m = patron.search(texto)
+        if m:
+            encontrados.append(m.group(0).strip())
+    return encontrados
+
+
 def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     """True si el post no dice de qué habla.
 
@@ -254,6 +292,7 @@ class Draft:
     idioma_incorrecto: bool = False
     tickers_faltantes: list[str] = field(default_factory=list)
     sujeto_ausente: bool = False
+    llamada_inventada: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -264,6 +303,7 @@ class Draft:
             and not self.idioma_incorrecto
             and not self.tickers_faltantes
             and not self.sujeto_ausente
+            and not self.llamada_inventada
         )
 
     @property
@@ -575,6 +615,9 @@ def draft_posts(
                 tickers_faltantes=falta_ticker("\n".join(piezas), brief.ticker),
                 sujeto_ausente=falta_sujeto("\n".join(piezas),
                                             getattr(brief, "sujeto", ())),
+                llamada_inventada=(
+                    afirma_llamada_propia("\n".join(piezas))
+                    if brief.kind in SIN_HISTORIAL else []),
             )
         )
     return drafts

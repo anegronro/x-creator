@@ -122,6 +122,8 @@ def redactar(
     ),
     macro: bool = typer.Option(
         False, help="Post de mercado/economía, sin empresa concreta."),
+    cripto: bool = typer.Option(
+        False, help="Post de activos digitales (BTC, XRP, ETH, SOL)."),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
     from xcreator.brief import load_briefs
@@ -133,6 +135,10 @@ def redactar(
 
     if macro:
         _redactar_macro(q, s, n=n, encolar=encolar)
+        return
+
+    if cripto:
+        _redactar_cripto(q, s, n=n, encolar=encolar)
         return
 
     lecciones = []
@@ -289,6 +295,70 @@ def _redactar_planes(planes, q, s, *, lecciones, encolar: bool) -> None:
         typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
                     fg="red", err=True)
         raise typer.Exit(1)
+
+
+def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
+    """Post de activos digitales. Sin modelo de valor: solo hechos de precio."""
+    from xcreator.cripto import brief_cripto, mejores_temas
+    from xcreator.generate import draft_posts
+
+    temas = mejores_temas(s.fmp_api_key)
+    if not temas:
+        typer.secho("Ningún activo digital tiene algo que contar hoy. Un "
+                    "precio en mitad de su rango no es un post.", fg="yellow")
+        return
+
+    # Misma ventana de descanso que los tickers: con cuatro activos, coger
+    # siempre la cabeza del ranking sería publicar de Solana toda la semana.
+    # Si todos han salido hace poco no se fuerza el silencio — se coge el más
+    # antiguo, que es el que menos se repite.
+    from datetime import date
+
+    from xcreator.temas import VENTANA_DESCANSO
+
+    ultimo = q.ultimo_uso_por_ticker()
+    hoy = date.today()
+
+    def _dias(t):
+        f = ultimo.get(t.cfg.ticker.upper())
+        if not f:
+            return 10_000
+        try:
+            return (hoy - date.fromisoformat(f)).days
+        except ValueError:
+            return 10_000
+
+    frescos = [t for t in temas if _dias(t) >= VENTANA_DESCANSO]
+    lectura = frescos[0] if frescos else max(temas, key=_dias)
+    # El bono a 10 años como contexto: es el único argumento cruzado que casi
+    # nadie hace aquí —qué tasa sin riesgo tiene que batir un activo sin flujo
+    # de caja— y sale gratis porque FRED ya está cableado.
+    tasa10 = None
+    try:
+        from xcreator.datos import fred_series
+
+        serie = fred_series("DGS10", s.fred_api_key)
+        if serie:
+            tasa10 = serie[-1]
+    except Exception:
+        tasa10 = None
+
+    brief = brief_cripto(lectura, tasa10)
+    typer.echo(f"Cripto: {lectura.cfg.nombre} ({lectura.cfg.ticker}) — "
+               f"${lectura.precio:,.{lectura.cfg.decimales}f}, "
+               f"percentil {lectura.percentil:.0%}, "
+               f"{lectura.caida_desde_maximo:.0f}% bajo máximos, "
+               f"vol {lectura.volatilidad:.0f}% — "
+               f"{lectura.tension:.0f} pts de tensión")
+    typer.echo(f"Ángulo: {brief.angle}\n")
+
+    # Una sola variante a la cola. Las otras son repuesto, no posts extra:
+    # encolarlas todas eran n posts seguidos del mismo activo, el mismo fallo
+    # que ya costó tres posts de la misma serie macro en un día.
+    drafts = draft_posts(brief, s, n=n)
+    if drafts:
+        _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                           brief, q, s, encolar=encolar)
 
 
 def _analizar_cuenta(csv: Path) -> None:
@@ -746,20 +816,12 @@ def _redactar_macro(q, s, *, n: int, encolar: bool) -> None:
                f"{lectura.tension:.0f} pts de tensión)")
     typer.echo(f"Ángulo: {brief.angle}\n")
 
-    for d in draft_posts(brief, s, n=n):
-        estado = "OK" if d.valido else "REVISAR"
-        typer.secho(f"[{estado}] {d.approach}", fg="green" if d.valido else "yellow")
-        typer.echo(f"  {d.text}  ({len(d.text)} c)")
-        for i, t in enumerate(d.thread, 2):
-            typer.echo(f"  {i}/ {t}  ({len(t)} c)")
-        if d.numeros_no_justificados:
-            typer.secho(f"  CIFRAS SIN FUENTE: {d.numeros_no_justificados}", fg="red")
-        if d.truncado:
-            typer.secho("  TEXTO CORTADO — no publicar así", fg="red")
-        if encolar:
-            item = q.add(d, estado="programado" if d.valido else "pendiente")
-            typer.echo(f"  -> cola id {item.id}")
-        typer.echo("")
+    # Una sola a la cola: las demás son repuesto. Encolarlas todas puso tres
+    # posts del mismo dato macro en un día.
+    drafts = draft_posts(brief, s, n=n)
+    if drafts:
+        _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                           brief, q, s, encolar=encolar)
 
 
 def _grafico_para(brief, settings, item_id: str):
