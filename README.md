@@ -89,6 +89,25 @@ Long-polling con offset persistido, sin webhook, para que corra por cron:
 */3 * * * * cd ~/Proyectos/x-creator && ./.venv/bin/xc telegram ciclo >> /tmp/xc-tg.log 2>&1
 ```
 
+## Asistente de replies
+
+Donde de verdad crece una cuenta chica. En FinTwit te descubren en las
+respuestas a cuentas grandes, no en tus propios posts.
+
+```bash
+xc responder --autor "@unusual_whales" --texto "\$NVDA is the most crowded trade"
+```
+
+**La regla que lo mantiene honesto: sabe abstenerse.** Si no hay un dato duro
+que aporte al post, no se genera respuesta. El emparejamiento (ticker
+mencionado ↔ brief que tenemos) es determinista y ocurre ANTES de llamar al
+modelo, así que declinar no cuesta ni un token. Y el modelo puede declinar
+también, aunque el ticker coincida: mencionar `$NVDA` no significa que
+nuestras cifras aporten a ESE post.
+
+Un asistente que siempre encuentra algo que decir es una máquina de spam, y
+es exactamente lo que X penaliza.
+
 ## Lo que falta
 
 - Publicador contra la API de X (créditos + OAuth).

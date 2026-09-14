@@ -177,6 +177,8 @@ def _texto_item(item) -> str:
         (f"{n}/ {p}" if len(piezas) > 1 else p) for n, p in enumerate(piezas, 1)
     )
     cab = f"{item.ticker} · {item.kind} · {len(item.texto)}c"
+    if item.responde_a:
+        cab = f"RESPUESTA a {item.responde_a} · " + cab
     if len(piezas) > 1:
         cab += f" · hilo de {len(piezas)}"
     partes = [cab, "", cuerpo]

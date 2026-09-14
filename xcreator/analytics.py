@@ -556,3 +556,85 @@ def analyze_account(dias: list[Dia]) -> ReporteCuenta:
         replies_total=sum(d.replies for d in dias),
         mejor_dia=max(imp) if imp else 0.0,
     )
+
+
+# --- Respuestas vs posts propios ------------------------------------------
+#
+# La pregunta que más decide la estrategia de una cuenta chica: ¿de dónde
+# viene tu alcance? Si casi todo llega por respuestas, invertir en pulir
+# posts propios es optimizar la parte que nadie ve.
+
+@dataclass
+class MixDeAlcance:
+    """Cómo se reparte el alcance entre responder y publicar."""
+
+    n_respuestas: int
+    n_propios: int
+    imp_respuestas: float
+    imp_propios: float
+    mediana_respuestas: float
+    mediana_propios: float
+    p_value: float | None
+
+    @property
+    def pct_publicaciones(self) -> float:
+        total = self.n_respuestas + self.n_propios
+        return self.n_respuestas / total if total else 0.0
+
+    @property
+    def pct_alcance(self) -> float:
+        total = self.imp_respuestas + self.imp_propios
+        return self.imp_respuestas / total if total else 0.0
+
+    @property
+    def ratio_medianas(self) -> float:
+        return self.mediana_respuestas / max(self.mediana_propios, 1.0)
+
+    @property
+    def diferencia_es_solida(self) -> bool:
+        """Si una respuesta alcanza MÁS que un post propio, con evidencia.
+
+        Es fácil mirar los tres posts de arriba del ranking, ver que son
+        respuestas y concluir que responder rinde más. Con muestras chicas
+        eso es casi siempre ruido: aquí hace falta el test.
+        """
+        return (
+            self.n_respuestas >= MIN_GROUP
+            and self.n_propios >= MIN_GROUP
+            and self.p_value is not None
+            and self.p_value < ALPHA
+        )
+
+    @property
+    def veredicto(self) -> str:
+        if self.n_propios < MIN_GROUP or self.n_respuestas < MIN_GROUP:
+            return (f"muestra insuficiente para comparar "
+                    f"(respuestas n={self.n_respuestas}, propios "
+                    f"n={self.n_propios}; mínimo {MIN_GROUP} de cada)")
+        if self.p_value is None:
+            return "sin test"
+        if self.p_value >= ALPHA:
+            return (f"las medianas no se distinguen del ruido "
+                    f"(p={self.p_value:.2f})")
+        mas = "MÁS" if self.ratio_medianas > 1 else "MENOS"
+        return (f"una respuesta alcanza {mas}: {self.ratio_medianas:.1f}x "
+                f"(p={self.p_value:.3f})")
+
+
+def _es_respuesta(post: Post) -> bool:
+    """Un post que empieza con @ es una respuesta en el export de X."""
+    return post.text.strip().startswith("@")
+
+
+def mix_de_alcance(posts: list[Post]) -> MixDeAlcance:
+    resp = [p for p in posts if _es_respuesta(p)]
+    prop = [p for p in posts if not _es_respuesta(p)]
+    ir = [p.impressions for p in resp]
+    ip = [p.impressions for p in prop]
+    return MixDeAlcance(
+        n_respuestas=len(resp), n_propios=len(prop),
+        imp_respuestas=sum(ir), imp_propios=sum(ip),
+        mediana_respuestas=statistics.median(ir) if ir else 0.0,
+        mediana_propios=statistics.median(ip) if ip else 0.0,
+        p_value=_mannwhitney(ir, ip),
+    )

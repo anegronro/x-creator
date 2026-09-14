@@ -83,6 +83,18 @@ def analizar(
         for franja, (n, med) in rep.por_horario.items():
             typer.echo(f"   {franja:<20} n={n:<4} {med:.3%}")
 
+    from xcreator.analytics import mix_de_alcance
+
+    mix = mix_de_alcance(posts)
+    typer.echo("\n--- ¿De dónde viene tu alcance? ---")
+    typer.echo(f"   Respuestas a otros: {mix.n_respuestas:>3} publicaciones "
+               f"({mix.pct_publicaciones:.0%})  {mix.imp_respuestas:>7,.0f} "
+               f"impresiones ({mix.pct_alcance:.0%})  mediana {mix.mediana_respuestas:,.0f}")
+    typer.echo(f"   Posts propios:      {mix.n_propios:>3} publicaciones      "
+               f"      {mix.imp_propios:>7,.0f} impresiones        "
+               f"mediana {mix.mediana_propios:,.0f}")
+    typer.echo(f"   -> {mix.veredicto}")
+
     typer.echo("\n--- Tus 3 posts con más conversación ---")
     for p in rep.top_posts[:3]:
         typer.echo(f"   {p.reply_rate:.2%} | {p.impressions:>8,.0f} imp | "
@@ -236,6 +248,65 @@ def angulos() -> None:
         chars = len(metodologia(s.cerebro_dir, a.clave))
         typer.echo(f"  {a.clave:<10} {a.titulo:<22} {chars:>6,} c de metodología")
         typer.echo(f"             {a.pregunta}")
+
+
+@app.command("responder")
+def responder(
+    autor: str = typer.Option(..., help="Handle del autor, ej. @unusual_whales"),
+    texto: str = typer.Option("", help="Texto del post. Vacío = se lee de stdin."),
+    url: str = typer.Option("", help="Link al post (para abrirlo al aprobar)."),
+    encolar: bool = typer.Option(True, help="Guardar en la cola de aprobación."),
+) -> None:
+    """Propone un reply a un post ajeno, o dice por qué no hay nada que aportar.
+
+    Aquí está la palanca de crecimiento de una cuenta chica: en FinTwit te
+    descubren en las respuestas a cuentas grandes, no en tus propios posts.
+    """
+    import sys
+
+    from xcreator.brief import load_briefs
+    from xcreator.datos import live_price
+    from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
+
+    q, s = _queue()
+    if not texto:
+        texto = sys.stdin.read()
+    mencion = Mencion(autor=autor, texto=texto, url=url)
+
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key))
+    rel = encontrar_relevancia(mencion, briefs)
+
+    typer.echo(f"Post de {autor} — tickers detectados: "
+               f"{', '.join(sorted(mencion.tickers())) or 'ninguno'}")
+    if not rel.aporta:
+        typer.secho(f"\nNO RESPONDER: {rel.motivo}", fg="yellow", bold=True)
+        typer.echo("Abstenerse es el comportamiento correcto: un reply sin "
+                   "dato nuevo es spam y X lo penaliza.")
+        return
+
+    typer.echo(f"Relevante: {rel.motivo}\n")
+    d = draft_reply(mencion, rel, s)
+
+    if d.declinado:
+        typer.secho(f"NO RESPONDER: {d.motivo}", fg="yellow", bold=True)
+        if d.que_aporta:
+            typer.echo(f"  ({d.que_aporta})")
+        return
+
+    estado = "OK" if d.valido else "REVISAR"
+    typer.secho(f"[{estado}] responde a {autor}  ({len(d.texto)} c)",
+                fg="green" if d.valido else "yellow", bold=True)
+    typer.echo(f"  {d.texto}")
+    typer.echo(f"  aporta: {d.que_aporta}")
+    if d.numeros_no_justificados:
+        typer.secho(f"  CIFRAS SIN FUENTE: {d.numeros_no_justificados}", fg="red")
+    if d.exceso_caracteres:
+        typer.secho(f"  se pasa por {d.exceso_caracteres} caracteres", fg="red")
+    if d.truncado:
+        typer.secho("  TEXTO CORTADO — no publicar así", fg="red")
+    if encolar:
+        item = q.add(d)
+        typer.echo(f"  -> cola id {item.id}")
 
 
 @app.command("cola")

@@ -40,6 +40,9 @@ class Item:
     texto_editado: str = ""
     decidido: str = ""
     motivo_rechazo: str = ""
+    # Solo para replies: a quién y a qué post se responde.
+    responde_a: str = ""
+    url_origen: str = ""
     publicado_en: str = ""
     post_id: str = ""
     metricas: dict = field(default_factory=dict)
@@ -91,15 +94,18 @@ class Queue:
             creado=_now(),
             estado=estado,
             texto=draft.text,
-            hilo=list(draft.thread),
+            hilo=list(getattr(draft, "thread", [])),
             ticker=draft.ticker,
-            kind=draft.kind,
-            approach=draft.approach,
-            reply_hook=draft.reply_hook,
+            kind=getattr(draft, "kind", "") or ("reply" if getattr(draft, "autor", "") else ""),
+            approach=getattr(draft, "approach", ""),
+            reply_hook=getattr(draft, "reply_hook", "")
+            or getattr(draft, "que_aporta", ""),
             brief_id=draft.brief_id,
             model=draft.model,
             numeros_no_justificados=list(draft.numeros_no_justificados),
             truncado=getattr(draft, "truncado", False),
+            responde_a=getattr(draft, "autor", ""),
+            url_origen=getattr(draft, "url", ""),
         )
         items = self.load()
         items.append(item)

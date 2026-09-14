@@ -129,10 +129,25 @@ class _Variants(BaseModel):
 _CIERRES = ".!?\"')]}…"
 
 
+# Un salto de línea legítimo separa bloques: viene DESPUÉS de puntuación y
+# antes de mayúscula, dígito o símbolo. Uno que parte una palabra por la
+# mitad ("$194.56 \ntlessly flat") es corrupción del generador.
+_SALTO_ROTO = re.compile(r"[^.!?:\"')\]}…\n]\s*\n\s*[a-z]")
+
+
 def _parece_cortado(texto: str) -> bool:
-    """True si el texto parece interrumpido a media frase."""
+    """True si el texto parece interrumpido o partido a media frase.
+
+    Dos formas distintas de lo mismo, y la segunda costó un reply inservible
+    que pasó como válido: el final truncado se ve mirando el último carácter,
+    pero una palabra rota EN MEDIO solo se ve mirando los saltos de línea.
+    """
     t = texto.rstrip()
-    return bool(t) and t[-1] not in _CIERRES
+    if not t:
+        return False
+    if t[-1] not in _CIERRES:
+        return True
+    return bool(_SALTO_ROTO.search(t))
 
 
 @dataclass

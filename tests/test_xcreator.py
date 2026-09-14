@@ -722,3 +722,154 @@ def test_credenciales_mal_pegadas_no_llegan_a_la_api():
     s = SimpleNamespace(telegram_bot_token="A" * 35, telegram_chat_id="123")
     with pytest.raises(TelegramError, match="prefijo"):
         bot_desde(s)
+
+
+# --- asistente de replies -------------------------------------------------
+
+def _briefs_nvda():
+    from xcreator.brief import from_prediction
+
+    return [from_prediction(_PRED)]
+
+
+def test_responde_cuando_tenemos_el_ticker():
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    m = Mencion("@x", "$NVDA is the most crowded trade out there")
+    r = encontrar_relevancia(m, _briefs_nvda())
+    assert r.aporta and r.ticker == "NVDA"
+
+
+def test_se_abstiene_con_ticker_que_no_cubrimos():
+    """Responder sin datos propios es ruido, y X penaliza el ruido."""
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    r = encontrar_relevancia(Mencion("@x", "$GME squeeze again"), _briefs_nvda())
+    assert not r.aporta
+    assert "GME" in r.motivo
+
+
+def test_se_abstiene_sin_ninguna_empresa():
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    r = encontrar_relevancia(Mencion("@x", "The Fed has a hard job"), _briefs_nvda())
+    assert not r.aporta
+
+
+def test_abstenerse_no_gasta_tokens():
+    """El emparejamiento es previo al modelo: declinar tiene que ser gratis."""
+    from xcreator.replies import Mencion, Relevancia, draft_reply
+
+    class ClienteQueExplota:
+        class messages:
+            @staticmethod
+            def parse(**kw):
+                raise AssertionError("no debió llamarse al modelo")
+
+    d = draft_reply(Mencion("@x", "nada"), Relevancia(None, motivo="sin datos"),
+                    SimpleNamespace(anthropic_api_key="k"),
+                    client=ClienteQueExplota())
+    assert d.declinado and not d.valido
+
+
+def test_el_modelo_puede_declinar_aunque_haya_ticker():
+    """Mencionar $NVDA no garantiza que nuestro brief aporte a ESE post."""
+    from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
+
+    class Cliente:
+        class messages:
+            @staticmethod
+            def parse(**kw):
+                Out = __import__("xcreator.replies", fromlist=["_modelo"])._modelo()
+                return SimpleNamespace(
+                    parsed_output=Out(aporta_algo=False, texto="",
+                                      que_aporta="nada relevante"),
+                    stop_reason="end_turn")
+
+    m = Mencion("@x", "$NVDA ships nice hoodies")
+    d = draft_reply(m, encontrar_relevancia(m, _briefs_nvda()),
+                    SimpleNamespace(anthropic_api_key="k", cerebro_dir=None),
+                    client=Cliente())
+    assert d.declinado and not d.valido
+
+
+def test_reply_con_cifra_inventada_no_es_valido():
+    from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
+
+    class Cliente:
+        class messages:
+            @staticmethod
+            def parse(**kw):
+                Out = __import__("xcreator.replies", fromlist=["_modelo"])._modelo()
+                return SimpleNamespace(
+                    parsed_output=Out(aporta_algo=True,
+                                      texto="Margins hit 78.2% last quarter.",
+                                      que_aporta="un margen"),
+                    stop_reason="end_turn")
+
+    m = Mencion("@x", "$NVDA is crowded")
+    d = draft_reply(m, encontrar_relevancia(m, _briefs_nvda()),
+                    SimpleNamespace(anthropic_api_key="k", cerebro_dir=None),
+                    client=Cliente())
+    assert "78.2%" in d.numeros_no_justificados
+    assert not d.valido
+
+
+def test_reply_usa_el_mismo_campo_que_la_cola(tmp_path):
+    """ReplyDraft y Draft se encolan igual: la cola no distingue."""
+    from xcreator.replies import ReplyDraft
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(ReplyDraft(texto="mi reply", que_aporta="un dato",
+                         autor="@grande", url="https://x.com/a/1", ticker="NVDA"))
+    item = q.get(i.id)
+    assert item.texto == "mi reply"
+    assert item.responde_a == "@grande"
+    assert item.kind == "reply"
+
+
+def test_detecta_tickers_por_cashtag_y_por_sigla():
+    from xcreator.replies import Mencion
+
+    assert Mencion("@x", "$NVDA and $AMD").tickers() == {"NVDA", "AMD"}
+    # Sin cashtag, las siglas en mayúscula sirven de respaldo.
+    assert "NVDA" in Mencion("@x", "NVDA earnings tomorrow").tickers()
+
+
+# --- texto partido a media palabra ----------------------------------------
+
+@pytest.mark.parametrize("texto,roto", [
+    ("bear case is $194.56 \ntlessly flat, base $275.14.", True),   # caso real
+    ("First line.\nSecond line here.", False),
+    ("Scoreboard:\n\nBear $194.56.", False),
+    ("Range: bear $194.\nWhich breaks first?", False),
+])
+def test_detecta_palabra_partida_en_medio(texto, roto):
+    """El final truncado se ve en el último carácter; una palabra rota EN
+    MEDIO solo se ve mirando los saltos de línea. Costó un reply inservible."""
+    from xcreator.generate import _parece_cortado
+
+    assert _parece_cortado(texto) is roto
+
+
+# --- mix de alcance -------------------------------------------------------
+
+def test_mix_separa_respuestas_de_posts_propios():
+    from xcreator.analytics import mix_de_alcance
+
+    posts = [_post("@alguien respuesta", impressions=100) for _ in range(3)]
+    posts += [_post("post propio", impressions=10) for _ in range(2)]
+    m = mix_de_alcance(posts)
+    assert (m.n_respuestas, m.n_propios) == (3, 2)
+    assert m.pct_alcance > 0.9
+
+
+def test_mix_no_concluye_con_muestra_chica():
+    """Ver que los tres mejores posts son respuestas NO es evidencia."""
+    from xcreator.analytics import mix_de_alcance
+
+    posts = [_post("@x resp", impressions=1000) for _ in range(58)]
+    posts += [_post("propio", impressions=10) for _ in range(5)]
+    m = mix_de_alcance(posts)
+    assert not m.diferencia_es_solida
+    assert "insuficiente" in m.veredicto
