@@ -134,7 +134,13 @@ class Queue:
         return next((i for i in self.load() if i.id == item_id), None)
 
     def pendientes(self) -> list[Item]:
-        return [i for i in self.load() if i.estado == "pendiente"]
+        """Lo que espera tu decisión: sin decidir, o programado y aún vetable.
+
+        Los programados entran aquí a propósito: son los que MÁS urge mandar
+        al teléfono, porque si nadie los mira salen solos.
+        """
+        return [i for i in self.load()
+                if i.estado in ("pendiente", "programado")]
 
     def update(self, item_id: str, **campos) -> Item | None:
         """Cambia campos de un item. Devuelve el item actualizado, o None."""

@@ -1923,3 +1923,18 @@ def test_una_marca_corrupta_no_publica_por_error(tmp_path):
     q.programar(i.id)
     q.update(i.id, decidido="no-es-fecha")
     assert q.listos_para_publicar() == []
+
+
+def test_los_programados_se_mandan_al_telefono(tmp_path):
+    """Son los que MÁS urge mandar: si nadie los mira, salen solos."""
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("uno"), estado="programado")
+    assert [x.id for x in q.pendientes()] == [i.id]
+
+
+def test_lo_ya_decidido_no_vuelve_al_telefono(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    a, b = q.add(_draft("uno")), q.add(_draft("dos"))
+    q.aprobar(a.id)
+    q.rechazar(b.id)
+    assert q.pendientes() == []
