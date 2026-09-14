@@ -152,6 +152,24 @@ class Queue:
             item_id, estado="publicado", publicado_en=_now(), post_id=post_id,
         )
 
+    def ultimo_uso_por_ticker(self) -> dict[str, str]:
+        """{ticker: fecha ISO del borrador más reciente que lo usó}.
+
+        Cuentan los pendientes, aprobados y publicados: si ya hay material de
+        un ticker esperando en el teléfono, generar más del mismo es
+        repetirse aunque el ángulo cambie. Los rechazados NO cuentan — se
+        descartaron precisamente para no publicarlos.
+        """
+        ultimo: dict[str, str] = {}
+        for i in self.load():
+            if i.estado == "rechazado" or not i.ticker:
+                continue
+            fecha = (i.publicado_en or i.decidido or i.creado or "")[:10]
+            t = i.ticker.upper()
+            if fecha and fecha > ultimo.get(t, ""):
+                ultimo[t] = fecha
+        return ultimo
+
     def resumen(self) -> dict[str, int]:
         items = self.load()
         return {e: sum(1 for i in items if i.estado == e) for e in ESTADOS}

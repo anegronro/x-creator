@@ -13,7 +13,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from datetime import date, timedelta
+
 from xcreator.brief import Brief
+
+# Días que un ticker "descansa" antes de volver a ser tema. Dos posts
+# seguidos del mismo nombre se leen como relleno aunque el ángulo cambie: la
+# variedad no es un adorno, es lo que distingue una cuenta de un bot.
+VENTANA_DESCANSO = 7
+# Cuánto resta haber salido ayer. Calibrado para que supere a la tensión
+# típica (2-4 puntos) y saque del ranking a lo recién publicado.
+PENALIZACION_MAX = 5.0
 
 
 @dataclass
@@ -21,6 +31,7 @@ class Tema:
     brief: Brief
     puntos: float = 0.0
     razones: list[str] = field(default_factory=list)
+    dias_desde_ultimo: int | None = None
 
     @property
     def ticker(self) -> str:
@@ -88,8 +99,37 @@ def evaluar(brief: Brief) -> Tema:
     return t
 
 
-def ranking(briefs: list[Brief], *, minimo: float = 1.0) -> list[Tema]:
-    """Los temas con historia, del más fuerte al más flojo."""
+def _penalizar(tema: Tema, ultimo_uso: dict[str, str], hoy: date) -> None:
+    """Resta puntos por haber salido hace poco. Decae hasta cero a los 7 días."""
+    fecha = ultimo_uso.get(tema.ticker.upper())
+    if not fecha:
+        return
+    try:
+        dias = (hoy - date.fromisoformat(fecha)).days
+    except ValueError:
+        return
+    tema.dias_desde_ultimo = dias
+    if dias >= VENTANA_DESCANSO:
+        return
+    castigo = PENALIZACION_MAX * (VENTANA_DESCANSO - dias) / VENTANA_DESCANSO
+    tema.puntos -= castigo
+    cuando = "hoy" if dias == 0 else ("ayer" if dias == 1 else f"hace {dias} días")
+    tema.razones.append(f"PERO ya salió {cuando} (-{castigo:.1f})")
+
+
+def ranking(briefs: list[Brief], *, minimo: float = 1.0,
+            ultimo_uso: dict[str, str] | None = None,
+            hoy: date | None = None) -> list[Tema]:
+    """Los temas con historia, del más fuerte al más flojo.
+
+    `ultimo_uso` ({ticker: fecha}) hace que el ranking varíe: sin esto, el
+    ticker con más tensión gana todos los días y la cuenta publica lo mismo
+    una y otra vez.
+    """
+    hoy = hoy or date.today()
     temas = [evaluar(b) for b in briefs]
+    if ultimo_uso:
+        for t in temas:
+            _penalizar(t, ultimo_uso, hoy)
     con_historia = [t for t in temas if t.puntos >= minimo]
     return sorted(con_historia, key=lambda t: t.puntos, reverse=True)

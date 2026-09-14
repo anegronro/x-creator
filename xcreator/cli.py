@@ -164,7 +164,7 @@ def redactar(
 
         from xcreator.temas import ranking
 
-        r = ranking(briefs)
+        r = ranking(briefs, ultimo_uso=q.ultimo_uso_por_ticker())
         if not r:
             typer.secho("Ningún brief tiene tensión hoy. Publicar por "
                         "publicar es peor que no publicar.", fg="yellow")
@@ -472,10 +472,10 @@ def temas(
     from xcreator.datos import live_price
     from xcreator.temas import ranking
 
-    _, s = _queue()
+    q, s = _queue()
     briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
                          limit=500)
-    r = ranking(briefs)
+    r = ranking(briefs, ultimo_uso=q.ultimo_uso_por_ticker())
     typer.echo(f"{len(briefs)} briefs disponibles -> {len(r)} con historia hoy\n")
     for t in r[:top]:
         typer.secho(f"  {t.puntos:>4.0f}  {t.ticker:<6}", fg="green", nl=False)

@@ -1473,3 +1473,70 @@ def test_enviar_pendientes_exige_un_limite_numerico(tmp_path):
     q.add(_draft("uno"))
     with pytest.raises(TypeError):
         enviar_pendientes(q, FakeBot(), limite=object())
+
+
+# --- variedad: no repetir ticker ------------------------------------------
+
+def test_lo_publicado_ayer_baja_en_el_ranking():
+    """Sin esto, el ticker con más tensión gana todos los días y la cuenta
+    publica lo mismo una y otra vez."""
+    from datetime import date, timedelta
+
+    from xcreator.temas import ranking
+
+    hoy = date(2026, 9, 14)
+    fuerte = _brief_con(precio_hoy=150.0)          # NVDA, mucha tensión
+    r_sin = ranking([fuerte], hoy=hoy)
+    r_con = ranking([fuerte], hoy=hoy,
+                    ultimo_uso={"NVDA": str(hoy - timedelta(days=1))})
+    assert r_sin[0].puntos > (r_con[0].puntos if r_con else -99)
+
+
+def test_a_los_siete_dias_ya_no_penaliza():
+    from datetime import date, timedelta
+
+    from xcreator.temas import VENTANA_DESCANSO, ranking
+
+    hoy = date(2026, 9, 14)
+    b = _brief_con(precio_hoy=150.0)
+    viejo = str(hoy - timedelta(days=VENTANA_DESCANSO))
+    assert (ranking([b], hoy=hoy)[0].puntos
+            == ranking([b], hoy=hoy, ultimo_uso={"NVDA": viejo})[0].puntos)
+
+
+def test_la_penalizacion_se_explica():
+    """El ranking tiene que poder discutirse: cada resta trae su motivo."""
+    from datetime import date, timedelta
+
+    from xcreator.temas import evaluar, _penalizar
+
+    hoy = date(2026, 9, 14)
+    t = evaluar(_brief_con(precio_hoy=150.0))
+    _penalizar(t, {"NVDA": str(hoy - timedelta(days=2))}, hoy)
+    assert any("ya salió hace 2 días" in r for r in t.razones)
+    assert t.dias_desde_ultimo == 2
+
+
+def test_un_rechazado_no_bloquea_el_ticker(tmp_path):
+    """Se descartó para no publicarlo: no puede además impedir volver a él."""
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("malo", ticker="NVDA"))
+    q.rechazar(i.id, motivo="cifra sin fuente")
+    assert q.ultimo_uso_por_ticker() == {}
+
+
+def test_lo_pendiente_ya_cuenta_como_usado(tmp_path):
+    """Si hay material de ese ticker esperando en el teléfono, generar más es
+    repetirse aunque todavía no se haya publicado."""
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("en cola", ticker="SLDE"))
+    assert "SLDE" in q.ultimo_uso_por_ticker()
+
+
+def test_se_queda_con_la_fecha_mas_reciente(tmp_path):
+    q = Queue(tmp_path / "cola.jsonl")
+    a = q.add(_draft("viejo", ticker="NVDA"))
+    q.update(a.id, creado="2026-09-01T10:00:00+00:00")
+    b = q.add(_draft("nuevo", ticker="NVDA"))
+    q.update(b.id, creado="2026-09-13T10:00:00+00:00")
+    assert q.ultimo_uso_por_ticker()["NVDA"] == "2026-09-13"
