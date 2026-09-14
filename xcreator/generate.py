@@ -361,6 +361,80 @@ def _shrink(client, texto: str, model: str) -> str:
     return nuevo if 0 < len(nuevo) <= MAX_CHARS else texto
 
 
+_REPARAR_TICKER = """This post is missing a required form of the ticker.
+
+Post:
+{texto}
+
+It must contain BOTH `${ticker}` as a cashtag and `{ticker}` as plain text, \
+each worked naturally into a sentence — never tacked onto the end as a label. \
+Missing right now: {faltan}.
+
+Rewrite it so both forms appear. Rules that do not bend:
+- Do not add, remove or alter a single number.
+- Keep the argument and the closing question intact.
+- Stay at or under {limite} characters.
+
+Output only the rewritten post, nothing else."""
+
+
+def _reparar_ticker_mecanico(texto: str, ticker: str) -> str:
+    """Añade la forma que falta sin pedirle nada al modelo. Gratis y exacto.
+
+    Solo funciona si el ticker ya se menciona dos veces: entonces sobra una
+    mención para convertir. Con una sola no hay nada que mover sin inventar
+    texto, y eso lo hace mejor el modelo.
+    """
+    t = re.escape(ticker.upper())
+    faltan = falta_ticker(texto, ticker)
+    cashtags = list(re.finditer(rf"\${t}\b", texto, re.IGNORECASE))
+    planos = list(re.finditer(rf"(?<!\$)\b{t}\b", texto, re.IGNORECASE))
+    if f"${ticker.upper()}" in faltan and len(planos) >= 2:
+        # El primero se vuelve cashtag; los demás siguen dando la forma plana.
+        i = planos[0].start()
+        nuevo = texto[:i] + "$" + texto[i:]
+        return nuevo if len(nuevo) <= MAX_CHARS else texto
+    if ticker.upper() in faltan and len(cashtags) >= 2:
+        # Al último se le quita el `$`; el primero sigue siendo clickeable.
+        i = cashtags[-1].start()
+        return texto[:i] + texto[i + 1:]
+    return texto
+
+
+def _reparar_ticker(client, texto: str, ticker: str, model: str,
+                    allowed: list[float]) -> str:
+    """Devuelve el texto con las dos formas del ticker, o el original.
+
+    La regla 3b está en el prompt y aun así el modelo escribe una sola forma
+    y se olvida de la otra: en una tanda de AAPL fallaron las tres variantes.
+    Una instrucción no es una garantía, así que se comprueba en código y se
+    repara. Si la reparación empeora algo — se pasa de largo, mete una cifra
+    sin fuente o sigue sin el ticker — se devuelve el original y el borrador
+    queda marcado para revisión.
+    """
+    if not ticker or not falta_ticker(texto, ticker):
+        return texto
+    mecanico = _reparar_ticker_mecanico(texto, ticker)
+    if not falta_ticker(mecanico, ticker):
+        return mecanico
+    try:
+        r = client.messages.create(
+            model=model, max_tokens=2000,
+            messages=[{"role": "user", "content": _REPARAR_TICKER.format(
+                texto=texto, ticker=ticker.upper(), limite=MAX_CHARS,
+                faltan=", ".join(falta_ticker(texto, ticker)))}],
+        )
+    except Exception:
+        return texto
+    nuevo = "".join(b.text for b in r.content if b.type == "text").strip()
+    if (nuevo and len(nuevo) <= MAX_CHARS
+            and not falta_ticker(nuevo, ticker)
+            and not validate_numbers(nuevo, allowed)
+            and not _parece_cortado(nuevo)):
+        return nuevo
+    return texto
+
+
 def _system_blocks(metodologia: str, angulo) -> list[dict]:
     """System en bloques para que el prompt caching haga su trabajo.
 
@@ -459,6 +533,12 @@ def draft_posts(
                 # una cola de tres palabras.
                 ajustadas.append(_shrink(client, pieza, model or MODEL))
         piezas = ajustadas
+        # El ticker se repara sobre la pieza 1: es donde vive el símbolo, y el
+        # gate mira el hilo entero, así que solo se toca si al conjunto le
+        # falta una forma.
+        if brief.ticker and falta_ticker("\n".join(piezas), brief.ticker):
+            piezas[0] = _reparar_ticker(
+                client, piezas[0], brief.ticker, model or MODEL, allowed)
         v.text, v.thread = piezas[0], piezas[1:]
         exceso = sum(max(0, len(p) - MAX_CHARS) for p in piezas)
         drafts.append(

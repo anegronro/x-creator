@@ -2167,3 +2167,71 @@ def test_el_ticker_puede_estar_repartido_en_el_hilo(tmp_path):
         tmp_path, "$NVDA base case at $275.14.",
         ticker="NVDA", thread=["NVDA holds only if growth stays 40%."])
     assert revisar_antes_de_publicar(item) == []
+
+
+def test_reparacion_mecanica_pone_el_cashtag_al_primero(tmp_path):
+    """Con dos menciones planas, una se vuelve cashtag sin gastar una llamada."""
+    from xcreator.generate import _reparar_ticker_mecanico, falta_ticker
+
+    t = "NVDA trades at 44.60x. The NVDA base case is $305.61."
+    out = _reparar_ticker_mecanico(t, "NVDA")
+    assert out.startswith("$NVDA")
+    assert falta_ticker(out, "NVDA") == []
+
+
+def test_reparacion_mecanica_quita_el_dolar_al_ultimo(tmp_path):
+    from xcreator.generate import _reparar_ticker_mecanico, falta_ticker
+
+    t = "$NVDA trades at 44.60x. The $NVDA base case is $305.61."
+    out = _reparar_ticker_mecanico(t, "NVDA")
+    assert falta_ticker(out, "NVDA") == []
+    assert out.count("$NVDA") == 1
+
+
+def test_reparacion_mecanica_se_rinde_con_una_sola_mencion(tmp_path):
+    """Con una mención no hay nada que mover sin inventar texto."""
+    from xcreator.generate import _reparar_ticker_mecanico
+
+    t = "$AAPL at $332.27 trades at 44.50x earnings."
+    assert _reparar_ticker_mecanico(t, "AAPL") == t
+
+
+def test_reparacion_mecanica_no_se_pasa_del_limite(tmp_path):
+    """Añadir el `$` cuesta un carácter: si no cabe, se deja como estaba."""
+    from xcreator.generate import MAX_CHARS, _reparar_ticker_mecanico
+
+    t = "NVDA " + "x" * (MAX_CHARS - 10) + " NVDA"
+    assert len(t) == MAX_CHARS
+    assert _reparar_ticker_mecanico(t, "NVDA") == t
+
+
+def test_reparacion_por_modelo_rechaza_la_cifra_inventada(tmp_path):
+    """Si la reescritura mete un número sin fuente, se queda el original."""
+    from xcreator.generate import _reparar_ticker
+
+    class _C:
+        def __init__(self, txt): self.messages = self; self._t = txt
+        def create(self, **kw):
+            return type("R", (), {"content": [
+                type("B", (), {"type": "text", "text": self._t})()]})()
+
+    orig = "$AAPL trades at 44.50x earnings today."
+    malo = _C("$AAPL trades at 44.50x. AAPL margins hit 78.2% last quarter.")
+    assert _reparar_ticker(malo, orig, "AAPL", "m", [44.50]) == orig
+
+    bueno = _C("$AAPL trades at 44.50x. AAPL is not cheap.")
+    assert _reparar_ticker(bueno, orig, "AAPL", "m", [44.50]).startswith("$AAPL")
+
+
+def test_reparacion_por_modelo_rechaza_lo_que_sigue_sin_ticker(tmp_path):
+    from xcreator.generate import _reparar_ticker
+
+    class _C:
+        def __init__(self, txt): self.messages = self; self._t = txt
+        def create(self, **kw):
+            return type("R", (), {"content": [
+                type("B", (), {"type": "text", "text": self._t})()]})()
+
+    orig = "$AAPL trades at 44.50x earnings today."
+    assert _reparar_ticker(_C("Apple trades at 44.50x."), orig, "AAPL",
+                           "m", [44.50]) == orig
