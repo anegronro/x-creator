@@ -98,8 +98,9 @@ case "${1:-}" in
   publicar)
     # Publica lo aprobado, de uno en uno y con hora y media de separación.
     # "Aprobar = publicar" sin espaciado vacía la cola de golpe, y ocho posts
-    # seguidos se leen como un bot.
-    salida=$("$XC" publicar --no-en-seco --maximo 1 --espaciado 90 2>&1); codigo=$?
+    # seguidos se leen como un bot. El espaciado sale de store.ESPACIADO_MINUTOS:
+    # escribirlo aquí lo desincronizaba del aviso de Telegram.
+    salida=$("$XC" publicar --no-en-seco --maximo 1 2>&1); codigo=$?
     if ! echo "$salida" | grep -q "Toca esperar\|Nada aprobado"; then
       registrar "publicar: $(echo "$salida" | tail -3)"
     fi

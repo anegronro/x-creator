@@ -789,7 +789,7 @@ def publicar(
     permitir_link: bool = typer.Option(False, help="Permitir links (cuestan 13x)."),
     maximo: int = typer.Option(0, help="Máximo por pasada (0 = sin límite)."),
     espaciado: int = typer.Option(
-        0, help="Minutos mínimos desde el último post publicado."),
+        0, help="Minutos mínimos desde el último post propio (0 = el de store)."),
 ) -> None:
     """Publica en X lo que YA aprobaste. En seco por defecto.
 
@@ -813,6 +813,13 @@ def publicar(
     # Los replies van primero y se saltan el espaciado: caducan en horas,
     # mientras que un post propio sigue igual de bueno dentro de un rato.
     items.sort(key=lambda i: 0 if i.kind == "reply" else 1)
+    # El espaciado por defecto sale de la constante, no de la línea del cron:
+    # tenerlo escrito en dos sitios es como se desincronizan las cosas, y aquí
+    # el aviso de Telegram depende del mismo número.
+    from xcreator.store import ESPACIADO_MINUTOS
+
+    if espaciado == 0 and not item_id:
+        espaciado = ESPACIADO_MINUTOS
     if espaciado and not item_id and not any(i.kind == "reply" for i in items):
         desde = q.minutos_desde_ultima_publicacion()
         if desde is not None and desde < espaciado:

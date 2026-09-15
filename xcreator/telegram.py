@@ -215,7 +215,18 @@ class Estado:
 
 # --- render ---------------------------------------------------------------
 
-def _texto_item(item) -> str:
+# Angel está en AST (UTC-4) todo el año: Puerto Rico no cambia la hora. Una
+# hora en UTC en el teléfono no la lee nadie.
+_HORAS_AST = -4
+
+
+def _hora_local(t) -> str:
+    from datetime import timedelta
+
+    return (t + timedelta(hours=_HORAS_AST)).strftime("%H:%M")
+
+
+def _texto_item(item, sale=None) -> str:
     piezas = [item.texto, *item.hilo]
     cuerpo = "\n\n".join(
         (f"{n}/ {p}" if len(piezas) > 1 else p) for n, p in enumerate(piezas, 1)
@@ -227,9 +238,10 @@ def _texto_item(item) -> str:
     if len(piezas) > 1:
         cab += f" · hilo de {len(piezas)}"
     if getattr(item, "estado", "") == "programado":
-        from xcreator.store import MINUTOS_DE_GRACIA
-
-        cab += f" · SALE SOLO en {MINUTOS_DE_GRACIA} min"
+        # La hora REAL, no los 45 minutos de la ventana de veto: el publicador
+        # saca uno cada hora y media, así que solo el primero de la tanda sale
+        # a los 45. Prometerle lo mismo a los tres era falso para dos.
+        cab += f" · SALE SOLO ~{_hora_local(sale)}" if sale else " · SALE SOLO"
     partes = [cab, "", cuerpo]
     if item.url_origen:
         partes += ["", f"Abre y responde aquí: {item.url_origen}"]
@@ -328,16 +340,18 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
     """
     sin_enviar = [i for i in queue.pendientes()
                   if not i.metricas.get("telegram_message_id")]
+    proyeccion = queue.proyeccion_de_salida()
     n = 0
     for item in sin_enviar[:limite]:
         imagen = Path(item.imagen) if item.imagen else None
         if imagen is not None and imagen.exists():
             # Con gráfico se manda la foto: aprobar una imagen sin verla es
             # aprobar a ciegas.
-            res = bot.send_photo(imagen, _texto_item(item),
+            res = bot.send_photo(imagen, _texto_item(item, proyeccion.get(item.id)),
                                  botones=_botones(item.id, item))
         else:
-            res = bot.send(_texto_item(item), botones=_botones(item.id, item))
+            res = bot.send(_texto_item(item, proyeccion.get(item.id)),
+                           botones=_botones(item.id, item))
         queue.update(item.id, metricas={**item.metricas,
                                         "telegram_message_id": res.get("message_id")})
         n += 1

@@ -22,6 +22,14 @@ ESTADOS = ("pendiente", "programado", "aprobado", "rechazado", "publicado")
 # vetarlo: si nadie hace nada, se publica. Al revés que la aprobación, donde
 # el silencio significaba que no salía nunca.
 MINUTOS_DE_GRACIA = 45
+# Minutos entre dos posts propios. Vivía suelto en la línea del cron, y el
+# aviso de Telegram prometía "sale en 45 min" a los tres borradores del día
+# sin saber que el publicador saca uno cada hora y media. Una constante en dos
+# sitios acaba desincronizada: aquí manda.
+ESPACIADO_MINUTOS = 90
+# La ventana de publicación, en horas UTC. TIENE que coincidir con la línea
+# `*/30 12-23 * * * cron.sh publicar` del crontab.
+VENTANA_UTC = (12, 23)
 
 
 @dataclass
@@ -245,6 +253,65 @@ class Queue:
             and (i.url_origen or "").rstrip("/").split("/")[-1] == clave
             for i in self.load()
         )
+
+    def proyeccion_de_salida(self, *, espaciado: int = ESPACIADO_MINUTOS,
+                             ahora=None) -> dict[str, "datetime"]:
+        """Cuándo saldría de verdad cada post propio programado.
+
+        No es lo mismo "ya se puede publicar" que "se publica": pasada la
+        ventana de veto, el post entra en una cola que avanza de uno en uno
+        cada `espaciado` minutos y solo dentro de la ventana horaria. Decirle
+        a los tres borradores del día que salen en 45 minutos es falso para
+        dos de ellos.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        ahora = ahora or datetime.now(timezone.utc)
+
+        def en_ventana(t):
+            ini, fin = VENTANA_UTC
+            if t.hour < ini:
+                return t.replace(hour=ini, minute=0, second=0, microsecond=0)
+            if t.hour > fin:
+                return (t + timedelta(days=1)).replace(
+                    hour=ini, minute=0, second=0, microsecond=0)
+            return t
+
+        def al_siguiente_paso(t):
+            """El cron publica a en punto y a y media: redondea hacia arriba."""
+            extra = (-t.minute) % 30
+            t = (t + timedelta(minutes=extra)).replace(second=0, microsecond=0)
+            return t
+
+        ultimo = None
+        for i in self.load():
+            if i.estado == "publicado" and i.kind != "reply" and i.publicado_en:
+                try:
+                    f = datetime.fromisoformat(i.publicado_en)
+                except ValueError:
+                    continue
+                if f.tzinfo is None:
+                    f = f.replace(tzinfo=timezone.utc)
+                if ultimo is None or f > ultimo:
+                    ultimo = f
+        base = (ultimo + timedelta(minutes=espaciado)) if ultimo else ahora
+
+        proyeccion: dict[str, datetime] = {}
+        for i in self.load():
+            if i.estado not in ("programado", "aprobado") or i.kind == "reply":
+                continue
+            desde_txt = i.decidido or i.creado
+            try:
+                desde = datetime.fromisoformat(desde_txt)
+            except (ValueError, TypeError):
+                continue
+            if desde.tzinfo is None:
+                desde = desde.replace(tzinfo=timezone.utc)
+            elegible = desde + timedelta(minutes=MINUTOS_DE_GRACIA)
+            t = en_ventana(al_siguiente_paso(max(elegible, base, ahora)))
+            proyeccion[i.id] = t
+            base = t + timedelta(minutes=espaciado)
+        return proyeccion
 
     def replies_opinion_de_hoy(self) -> int:
         """Los replies de hoy sin cifras propias.

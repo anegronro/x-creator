@@ -2836,3 +2836,66 @@ def test_el_cupo_de_replies_y_su_parte_de_opinion():
     assert s.replies_por_dia == 6
     assert s.replies_opinion_por_dia == 1
     assert s.replies_opinion_por_dia * 3 <= s.replies_por_dia
+
+
+# --- la tarjeta de Telegram no puede prometer lo que no pasa ---------------
+
+def test_la_proyeccion_espacia_los_posts_de_la_tanda(tmp_path):
+    """Tres borradores creados a la vez NO salen los tres a los 45 minutos:
+    el publicador saca uno cada hora y media."""
+    from datetime import datetime, timedelta, timezone
+
+    from xcreator.store import ESPACIADO_MINUTOS, MINUTOS_DE_GRACIA, Queue
+
+    ahora = datetime(2026, 9, 15, 12, 31, tzinfo=timezone.utc)
+    q = Queue(tmp_path / "cola.jsonl")
+    ids = []
+    for t in ("ANET", "VRT", "WDAY"):
+        i = q.add(_draft(f"${t} moves. {t} holds.", ticker=t), estado="programado")
+        q.update(i.id, creado=ahora.isoformat())
+        ids.append(i.id)
+
+    pr = q.proyeccion_de_salida(ahora=ahora)
+    salidas = [pr[i] for i in ids]
+    assert salidas[0] >= ahora + timedelta(minutes=MINUTOS_DE_GRACIA)
+    for antes, despues in zip(salidas, salidas[1:]):
+        assert (despues - antes).total_seconds() / 60 >= ESPACIADO_MINUTOS
+    assert salidas[2] - salidas[0] >= timedelta(minutes=2 * ESPACIADO_MINUTOS)
+
+
+def test_la_proyeccion_respeta_la_ventana_horaria(tmp_path):
+    """Un borrador de madrugada no sale de madrugada."""
+    from datetime import datetime, timezone
+
+    from xcreator.store import VENTANA_UTC, Queue
+
+    ahora = datetime(2026, 9, 15, 3, 0, tzinfo=timezone.utc)
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("$NVDA moves. NVDA holds.", ticker="NVDA"),
+              estado="programado")
+    q.update(i.id, creado=ahora.isoformat())
+    assert q.proyeccion_de_salida(ahora=ahora)[i.id].hour >= VENTANA_UTC[0]
+
+
+def test_la_tarjeta_dice_la_hora_y_no_los_45_minutos(tmp_path):
+    from datetime import datetime, timezone
+
+    from xcreator.store import Queue
+    from xcreator.telegram import _texto_item
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("$NVDA moves. NVDA holds.", ticker="NVDA"),
+              estado="programado")
+    sale = datetime(2026, 9, 15, 17, 30, tzinfo=timezone.utc)   # 13:30 AST
+    txt = _texto_item(q.get(i.id), sale)
+    assert "13:30" in txt
+    assert "45 min" not in txt
+
+
+def test_el_espaciado_vive_en_un_solo_sitio():
+    """Estaba escrito a mano en la línea del cron y el aviso de Telegram no lo
+    sabía. Una constante en dos sitios acaba desincronizada."""
+    from pathlib import Path
+
+    cron = (Path(__file__).resolve().parents[1] / "scripts" / "cron.sh").read_text()
+    assert "--espaciado" not in cron
