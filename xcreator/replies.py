@@ -97,19 +97,27 @@ class Mencion:
 # Temas sobre los que hay criterio aunque no haya un solo número nuestro.
 # La lista es corta a propósito: fuera de esto no es nuestra conversación, y
 # opinar de todo es como se pierde una cuenta de nicho.
+# Las claves tienen que ser INEQUÍVOCAS. La primera versión llevaba
+# "settlement" pensando en la liquidación de operaciones y enganchó con un
+# acuerdo judicial de zerohedge; peor aún, ese falso positivo se comió el
+# único cupo de opinión del día antes de llegar a la cuenta para la que se
+# construyó. Una palabra con dos significados en finanzas no sirve aquí.
 _TEMAS_SIN_CIFRAS: dict[str, tuple[str, ...]] = {
     "regulación de cripto": (
         "clarity act", "crypto bill", "crypto tax", "crypto legislation",
-        "stablecoin bill", "genius act", "digital asset", "cryptocurrency",
-        "crypto market structure",
+        "crypto market structure", "stablecoin bill", "genius act",
+        "digital asset", "cryptocurrency exchange", "crypto exchange",
+        "crypto regulation", "crypto etf", "bitcoin etf", "spot etf",
+        "sec crypto", "crypto custody", "self-custody",
     ),
     "estructura de mercado": (
-        "exchange", "custody", "market maker", "circuit breaker",
-        "settlement", "t+1", "short sale", "payment for order flow",
+        "t+1 settlement", "settlement cycle", "payment for order flow",
+        "circuit breaker", "short-sale rule", "naked short", "market maker",
+        "dark pool", "tick size", "24-hour trading", "extended hours trading",
     ),
-    "política monetaria y fiscal": (
-        "rate cut", "rate hike", "quantitative", "debt ceiling", "tariff",
-        "shutdown",
+    "política monetaria": (
+        "rate cut", "rate hike", "quantitative easing",
+        "quantitative tightening", "debt ceiling", "yield curve control",
     ),
 }
 

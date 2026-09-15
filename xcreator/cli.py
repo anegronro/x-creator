@@ -595,6 +595,37 @@ def vigilar(
             cache_cripto[t] = brief_para(t, s.fmp_api_key)
         return cache_cripto[t]
 
+    # Los posts de opinión se apartan aquí y se resuelven al final.
+    candidatos_opinion: list = []
+
+    def _redactar_y_encolar(cuenta, m, rel) -> int:
+        """Redacta el reply y lo deja en la cola. Devuelve 1 si se encoló."""
+        d = draft_reply(m, rel, s)
+        if d.declinado:
+            typer.echo(f"  {cuenta.handle}: declinado — {d.motivo}")
+            return 0
+        estado = "OK" if d.valido else "REVISAR"
+        sobre = f"${rel.ticker}" if rel.ticker else rel.tema
+        typer.secho(f"  [{estado}] {cuenta.handle} sobre {sobre}",
+                    fg="green" if d.valido else "yellow")
+        typer.echo(f"     {d.texto}")
+        if not encolar:
+            return 0
+        # Los replies NO se programan: no se pueden publicar por API, así que
+        # programarlos sería prometer algo que no ocurre.
+        q.add(d)
+        # Y se mandan YA, sin esperar al ciclo de Telegram: un reply pierde
+        # alcance por minutos, no por horas. Esperar al siguiente cron es
+        # regalar la ventana.
+        try:
+            from xcreator.telegram import bot_desde, enviar_pendientes
+
+            enviar_pendientes(q, bot_desde(s), limite=3)
+        except Exception as e:  # noqa: BLE001
+            typer.secho(f"     (no se pudo avisar por Telegram: {e})",
+                        fg="yellow")
+        return 1
+
     for cuenta in activas:
         # Tope propio de la cuenta, antes de gastar una sola lectura de X.
         if cuenta.tope_diario and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario:
@@ -634,11 +665,15 @@ def vigilar(
                         post_id=p.post_id)
             rel = encontrar_relevancia(m, briefs, nombres,
                                        cripto=brief_cripto_de)
-            if (rel.solo_opinion
-                    and q.replies_opinion_de_hoy() >= s.replies_opinion_por_dia):
+            if rel.solo_opinion:
+                # La opinión se aparca para una SEGUNDA vuelta. Procesarla
+                # aquí la hacía competir por el cupo con los replies de
+                # datos y ganaba por llegar antes: un falso positivo de
+                # zerohedge se llevó el único hueco del día y la cuenta para
+                # la que se construyó ni se miró.
+                candidatos_opinion.append((cuenta, m, horas))
                 if detalle:
-                    typer.echo(f"  -- {cuenta.handle}: cupo de opinión "
-                               f"agotado ({s.replies_opinion_por_dia}/día)")
+                    typer.echo(f"  ~~ {cuenta.handle}: {rel.motivo}")
                 continue
             if not rel.aporta:
                 if detalle:
@@ -648,29 +683,29 @@ def vigilar(
             relevantes += 1
             if rel.brief:
                 rel.brief.angulo = cuenta.angulo  # el ángulo lo fija la cuenta
-            d = draft_reply(m, rel, s)
-            if d.declinado:
-                typer.echo(f"  {cuenta.handle}: declinado — {d.motivo}")
-                continue
-            estado = "OK" if d.valido else "REVISAR"
-            typer.secho(f"  [{estado}] {cuenta.handle} sobre ${rel.ticker}",
-                        fg="green" if d.valido else "yellow")
-            typer.echo(f"     {d.texto}")
-            if encolar:
-                encolados += 1
-                # Los replies NO se programan: no se pueden publicar por API,
-                # así que programarlos sería prometer algo que no ocurre.
-                item = q.add(d)
-                # Y se mandan YA, sin esperar al ciclo de Telegram: un reply
-                # pierde alcance por minutos, no por horas. Esperar al
-                # siguiente cron es regalar la ventana.
-                try:
-                    from xcreator.telegram import bot_desde, enviar_pendientes
+            encolados += _redactar_y_encolar(cuenta, m, rel)
 
-                    enviar_pendientes(q, bot_desde(s), limite=3)
-                except Exception as e:  # noqa: BLE001
-                    typer.secho(f"     (no se pudo avisar por Telegram: {e})",
-                                fg="yellow")
+    # --- segunda vuelta: la opinión, con lo que haya sobrado del cupo ------
+    # Se ordenan por frescura y no por el orden de la watchlist: un reply a
+    # una conversación recién abierta llega a más gente, y así ninguna cuenta
+    # se queda fuera solo por estar al final de la lista.
+    for cuenta, m, horas in sorted(candidatos_opinion,
+                                   key=lambda c: c[2] if c[2] is not None else 99):
+        if q.replies_de_hoy() >= s.replies_por_dia:
+            break
+        if q.replies_opinion_de_hoy() >= s.replies_opinion_por_dia:
+            if detalle:
+                typer.echo(f"  ~~ cupo de opinión agotado "
+                           f"({s.replies_opinion_por_dia}/día)")
+            break
+        if (cuenta.tope_diario
+                and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario):
+            continue
+        rel = encontrar_relevancia(m, briefs, nombres, cripto=brief_cripto_de)
+        if not rel.solo_opinion:
+            continue
+        relevantes += 1
+        encolados += _redactar_y_encolar(cuenta, m, rel)
 
     s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
     s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))

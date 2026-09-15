@@ -2709,3 +2709,15 @@ def test_los_replies_de_opinion_tienen_su_propio_sub_tope(tmp_path):
     q.add(ReplyDraft(texto="opinión", que_aporta="x", autor="@a", ticker=""))
     assert q.replies_de_hoy() == 2
     assert q.replies_opinion_de_hoy() == 1
+
+
+def test_las_claves_de_opinion_son_inequivocas():
+    """«settlement» a secas enganchó con un acuerdo judicial de zerohedge y
+    se llevó el único cupo de opinión del día."""
+    from xcreator.replies import _tema_sin_cifras as t
+
+    assert t("A settlement that only covers filed claims") == ""
+    assert t("Bayer reaches a $2bn settlement over Roundup") == ""
+    assert t("The industry moves to T+1 settlement in May") == "estructura de mercado"
+    assert t("Ukraine strikes Russian refinery") == ""
+    assert t("Cryptocurrency exchange CoinEx to shut down") == "regulación de cripto"
