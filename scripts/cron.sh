@@ -51,8 +51,14 @@ case "${1:-}" in
     # No toca la API de X: es gratis y puede correr seguido.
     salida=$("$XC" telegram ciclo 2>&1); codigo=$?
     # Solo se registra cuando pasa algo: si no, el log es 288 líneas diarias
-    # de "sin novedades" y deja de leerse.
-    if ! echo "$salida" | grep -q "Sin novedades." || echo "$salida" | grep -qi "error\|falta"; then
+    # de "sin novedades" y deja de leerse. Pero "Sin novedades" viene de la
+    # parte que ESCUCHA botones, y aparecía aunque la parte que ENVÍA hubiera
+    # mandado borradores: el evento más importante del día, que los borradores
+    # llegaron al teléfono, no se registraba nunca. Angel preguntó por qué no
+    # le llegaba nada y el log no tenía la respuesta.
+    if echo "$salida" | grep -qi "error\|falta" \
+       || echo "$salida" | grep -qiE "enviado|aprobado|rechazado|editado" \
+       || ! echo "$salida" | grep -q "Sin novedades."; then
       registrar "telegram: $salida"
     fi
     exit $codigo
