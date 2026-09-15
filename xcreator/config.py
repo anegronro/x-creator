@@ -60,7 +60,12 @@ class Settings:
     # datos son lo que diferencia la cuenta; los de opinión son más fáciles
     # de producir y hay muchos más posts candidatos, así que sin este
     # sub-tope se comerían el cupo entero y el diferencial se perdería.
-    replies_opinion_por_dia: int = 2
+    # Vuelve a 1 (lo había subido a 2 por iniciativa propia). La semana del
+    # 9 al 15 de septiembre dice que los replies SIN cashtag tienen mediana 22
+    # frente a 104 los que llevan datos (n=8/40, p=0.003). El cuello no es el
+    # cupo sino los tickers: solo hubo 8 posts ajenos emparejables en 7 días,
+    # así que subir la opinión solo fabrica más de la categoría más floja.
+    replies_opinion_por_dia: int = 1
     # Y solo a posts recientes: a las tres horas la conversación ya se movió.
     horas_frescura_reply: float = 3.0
     # Solo UNA máquina puede hablar con Telegram. Dos instancias con el mismo
@@ -140,7 +145,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
         replies_por_dia=int(get("REPLIES_POR_DIA") or 6),
-        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 2),
+        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 1),
         horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
         telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
         not in ("false", "0", "no"),

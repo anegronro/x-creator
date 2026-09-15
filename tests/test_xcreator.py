@@ -2824,12 +2824,15 @@ def test_el_texto_limpio_sigue_pasando(tmp_path):
 
 
 def test_el_cupo_de_replies_y_su_parte_de_opinion():
-    """Subido de 3 a 6 el 2026-09-15: el 3 no lo midió nadie y los replies
-    son donde está el alcance. La opinión sube a 2 para que no pase de un
-    tercio: los replies con datos son lo que diferencia la cuenta."""
+    """Total 6, opinión 1.
+
+    El total sube de 3 porque no debe bloquear nunca un reply con datos: son
+    los de mejor mediana de todo lo que publica la cuenta (104 frente a 60 de
+    los posts propios). La opinión se queda en 1 porque su mediana es 22, y
+    el cuello real son los tickers emparejables, no el cupo."""
     from xcreator.config import Settings
 
     s = Settings()
     assert s.replies_por_dia == 6
-    assert s.replies_opinion_por_dia == 2
+    assert s.replies_opinion_por_dia == 1
     assert s.replies_opinion_por_dia * 3 <= s.replies_por_dia
