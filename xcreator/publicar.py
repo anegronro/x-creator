@@ -23,8 +23,8 @@ from pathlib import Path
 import httpx
 
 from xcreator.generate import (
-    MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, es_ingles, falta_sujeto,
-    falta_ticker, validate_numbers,
+    MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cifras_mal_formateadas,
+    es_ingles, falta_sujeto, falta_ticker, lleva_raya, validate_numbers,
 )
 
 POST_URL = "https://api.x.com/2/tweets"
@@ -109,6 +109,16 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
         if faltan:
             problemas.append(
                 f"falta el ticker en el texto final: {', '.join(faltan)}")
+    # Estilo, revisado sobre el texto FINAL porque la edición de Angel también
+    # puede meterlo: la raya larga delata texto generado, y las cifras van en
+    # convención inglesa (79,900 y 10.99).
+    entero = "\n".join(piezas)
+    if lleva_raya(entero):
+        problemas.append("usa una raya como puntuación: va punto, coma o dos puntos")
+    malas = cifras_mal_formateadas(entero)
+    if malas:
+        problemas.append(f"cifras mal formateadas {malas}: coma para los miles "
+                         f"y punto para los decimales")
     # Macro y cripto no tienen predicciones guardadas, así que atribuirse una
     # llamada pasada es inventar el historial de Angel y publicarlo con su
     # nombre. Las cifras pueden ser correctas y la frase seguir siendo falsa.

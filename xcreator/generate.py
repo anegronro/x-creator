@@ -108,6 +108,11 @@ version that ends with a bare ticker.
 4. Always state the assumption behind a projection. A number without its \
 assumption is a lie told with confidence.
 5. Never present a projection as a single value when the brief gives a range.
+6. No dashes as punctuation: no em dash, no en dash, no " - " between \
+clauses. Use a full stop, a comma or a colon. Hyphens inside a word are \
+fine and expected ("10-year", "high-yield", "mid-range").
+7. Numbers follow English convention: comma for thousands and a full stop \
+for decimals (79,900 and 10.99). Never the other way round.
 
 How to earn replies (this is what gets paid):
 - Take a position, then show the number that supports it. A post with no \
@@ -223,6 +228,32 @@ def afirma_llamada_propia(texto: str) -> list[str]:
     return encontrados
 
 
+# La raya larga es el tic que más delata un texto generado, y Angel lo pidió
+# fuera explícitamente. Se prohíben la raya (—), la barra (–), el doble guion
+# y el guion suelto entre espacios: todos hacen de puntuación. El guion DENTRO
+# de palabra se queda, porque "10-year", "high-yield" o "mid-range" son inglés
+# correcto y quitarlo rompería además los alias de los activos.
+_RAYAS = re.compile(r"[—–―‒]|(?<=\s)-{1,2}(?=\s)|\s--\s")
+
+
+def lleva_raya(texto: str) -> bool:
+    """True si el texto usa una raya como puntuación."""
+    return bool(_RAYAS.search(texto))
+
+
+# Cifras al estilo inglés: coma para los miles (79,900) y punto para los
+# decimales (10.99). Una coma seguida de uno, dos o cuatro dígitos es decimal
+# español o un número mal formado; un punto de miles delata lo mismo.
+# El corte va con lookahead y no con \b: en "1,5x" no hay frontera de palabra
+# entre el 5 y la x, así que \b dejaba pasar justo el caso más común.
+_CIFRA_MAL = re.compile(r"\d,\d{1,2}(?!\d)|\d,\d{4,}|\d\.\d{3},")
+
+
+def cifras_mal_formateadas(texto: str) -> list[str]:
+    """Las cifras que no siguen la convención inglesa. Vacío = todas bien."""
+    return [m.group(0) for m in _CIFRA_MAL.finditer(texto)]
+
+
 def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     """True si el post no dice de qué habla.
 
@@ -298,6 +329,8 @@ class Draft:
     tickers_faltantes: list[str] = field(default_factory=list)
     sujeto_ausente: bool = False
     llamada_inventada: list[str] = field(default_factory=list)
+    usa_raya: bool = False
+    cifras_mal: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -309,6 +342,8 @@ class Draft:
             and not self.tickers_faltantes
             and not self.sujeto_ausente
             and not self.llamada_inventada
+            and not self.usa_raya
+            and not self.cifras_mal
         )
 
     @property
@@ -623,6 +658,8 @@ def draft_posts(
                 llamada_inventada=(
                     afirma_llamada_propia("\n".join(piezas))
                     if brief.kind in SIN_HISTORIAL else []),
+                usa_raya=lleva_raya("\n".join(piezas)),
+                cifras_mal=cifras_mal_formateadas("\n".join(piezas)),
             )
         )
     return drafts

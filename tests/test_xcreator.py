@@ -2764,3 +2764,60 @@ def test_el_tope_de_una_corrida_no_se_guarda():
     # El tope efectivo sale del flag, y si no, de la config.
     assert "tope = cupo if cupo > 0 else s.replies_por_dia" in src
     assert "s.replies_por_dia" not in src.split("tope = cupo")[1].split("\n", 1)[1]
+
+
+# --- estilo: ni rayas ni cifras a la española ------------------------------
+
+def test_la_raya_larga_no_pasa():
+    """Angel: «los textos no deben llevar guiones». Es además el tic que más
+    delata un texto generado."""
+    from xcreator.generate import lleva_raya
+
+    assert lleva_raya("on its own — the Fed guided it there")
+    assert lleva_raya("a wide range – too wide")
+    assert lleva_raya("one thing -- another")
+    assert lleva_raya("one clause - another clause")
+
+
+def test_el_guion_dentro_de_palabra_se_queda():
+    """Quitarlo rompería el inglés y los alias de los activos."""
+    from xcreator.generate import lleva_raya
+
+    assert not lleva_raya("the 10-year at high-yield mid-range levels")
+    assert not lleva_raya("T+1 settlement and self-custody")
+    assert not lleva_raya("$NVDA base is $305.61.")
+
+
+def test_las_cifras_van_en_convencion_inglesa():
+    """Coma para los miles (79,900), punto para los decimales (10.99)."""
+    from xcreator.generate import cifras_mal_formateadas as c
+
+    assert c("$78,818.79 and 10.99") == []
+    assert c("79,900 units") == []
+    assert c("in 2026, the market moved") == []
+    assert c("4,95% today")
+    assert c("78.818,79 euros")
+    assert c("1,5x earnings"), "sin lookahead, «1,5x» se colaba por el \\b"
+
+
+def test_publicar_bloquea_la_raya_y_la_cifra_mal(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, con_raya = _item_aprobado(
+        tmp_path, "$NVDA at 44.60x — the multiple never moves. NVDA holds.",
+        ticker="NVDA")
+    assert any("raya" in p for p in revisar_antes_de_publicar(con_raya))
+
+    _, mal = _item_aprobado(
+        tmp_path, "$NVDA trades at 44,60x today. NVDA holds.", ticker="NVDA")
+    assert any("mal formateadas" in p for p in revisar_antes_de_publicar(mal))
+
+
+def test_el_texto_limpio_sigue_pasando(tmp_path):
+    from xcreator.publicar import revisar_antes_de_publicar
+
+    _, item = _item_aprobado(
+        tmp_path,
+        "$NVDA was $78,818.79 at 44.60x. NVDA holds only if growth stays 40%.",
+        ticker="NVDA")
+    assert revisar_antes_de_publicar(item) == []

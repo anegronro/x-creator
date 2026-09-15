@@ -25,6 +25,7 @@ from typing import Any, Callable
 from xcreator.brief import Brief
 from xcreator.cripto import ACTIVOS
 from xcreator.generate import (
+    cifras_mal_formateadas, lleva_raya,
     MAX_CHARS, _parece_cortado, es_ingles, falta_ticker, validate_numbers,
 )
 
@@ -240,6 +241,10 @@ verify it. Use prices, multiples, growth assumptions and ranges.
 2. Never compliment, never agree without adding something, never say "great \
 thread". A reply with no new information is spam, and it is what gets \
 accounts throttled.
+2b. No dashes as punctuation: no em dash, no en dash, no " - " between \
+clauses. A full stop, a comma or a colon instead. Hyphens inside a word are \
+fine ("10-year", "high-yield"). Numbers follow English convention: comma for \
+thousands, full stop for decimals (79,900 and 10.99).
 3. Don't insult the author or dunk on them. You're adding a data point, not \
 winning. The best replies make the original author want to answer.
 4. Never tell anyone to buy or sell.
@@ -281,7 +286,9 @@ the headline to matter. "Interesting" is not a position.
 incoherent; you never take a side between parties, and you never attack a \
 person. The account is about markets, not elections.
 5. Never tell anyone to buy or sell, and never predict a price.
-6. Don't insult the author. No links, no hashtags, no emoji.
+6. Don't insult the author. No links, no hashtags, no emoji. No dashes as \
+punctuation either: no em dash, no en dash, no " - " between clauses. Use a \
+full stop, a comma or a colon. Hyphens inside a word are fine ("10-year").
 7. If you have nothing worth saying, set aporta_algo to false. Silence is a \
 correct answer and is far better than a generic take.
 
@@ -326,6 +333,8 @@ class ReplyDraft:
     truncado: bool = False
     idioma_incorrecto: bool = False
     tickers_faltantes: list[str] = field(default_factory=list)
+    usa_raya: bool = False
+    cifras_mal: list[str] = field(default_factory=list)
     # Cuando el modelo decide que no hay nada que aportar.
     declinado: bool = False
     motivo: str = ""
@@ -345,6 +354,8 @@ class ReplyDraft:
             and not self.truncado
             and not self.idioma_incorrecto
             and not self.tickers_faltantes
+            and not self.usa_raya
+            and not self.cifras_mal
         )
 
 
@@ -459,4 +470,6 @@ def draft_reply(
                   or _parece_cortado(texto)),
         idioma_incorrecto=not es_ingles(texto),
         tickers_faltantes=falta_ticker(texto, relevancia.ticker),
+        usa_raya=lleva_raya(texto),
+        cifras_mal=cifras_mal_formateadas(texto),
     )
