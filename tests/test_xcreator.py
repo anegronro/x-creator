@@ -2899,3 +2899,66 @@ def test_el_espaciado_vive_en_un_solo_sitio():
 
     cron = (Path(__file__).resolve().parents[1] / "scripts" / "cron.sh").read_text()
     assert "--espaciado" not in cron
+
+
+def test_el_reply_SE_ENVIA_en_bloque_copiable(tmp_path):
+    """`mensaje_para_copiar` existía y no la llamaba nadie: los replies salían
+    como texto suelto entre las notas, imposibles de copiar en el móvil."""
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+    from xcreator.telegram import enviar_pendientes
+
+    class _Bot:
+        def __init__(self): self.enviados = []
+        def send(self, texto, *, botones=None, force_reply=False, html=False):
+            self.enviados.append((texto, html))
+            return {"message_id": 1}
+        def send_photo(self, *a, **k):
+            raise AssertionError("un reply no se manda como foto")
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(ReplyDraft(texto="BTC is $78,818.79 today. $BTC holds.",
+                     que_aporta="x", autor="@WatcherGuru", ticker="BTC",
+                     url="https://x.com/WatcherGuru/status/1"))
+    bot = _Bot()
+    assert enviar_pendientes(q, bot) == 1
+    texto, html = bot.enviados[0]
+    assert html, "sin HTML, Telegram no dibuja el bloque copiable"
+    assert "<pre>" in texto and "</pre>" in texto
+    assert "BTC is $78,818.79 today." in texto
+
+
+def test_las_notas_quedan_FUERA_del_bloque(tmp_path):
+    """Lo que esté dentro del <pre> se copia con el texto y acaba publicado."""
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+    from xcreator.telegram import mensaje_para_copiar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(ReplyDraft(texto="BTC holds. $BTC at $78,818.79.", que_aporta="x",
+                         autor="@w", ticker="BTC",
+                         url="https://x.com/w/status/1"))
+    txt = mensaje_para_copiar(q.get(i.id))
+    dentro = txt.split("<pre>")[1].split("</pre>")[0]
+    assert dentro.strip() == "BTC holds. $BTC at $78,818.79."
+    assert "caracteres" in txt.split("</pre>")[1], "las notas van después"
+
+
+def test_el_post_propio_sigue_yendo_como_siempre(tmp_path):
+    """El cambio es solo para los replies: un post propio lleva su ficha."""
+    from xcreator.store import Queue
+    from xcreator.telegram import enviar_pendientes
+
+    class _Bot:
+        def __init__(self): self.enviados = []
+        def send(self, texto, *, botones=None, force_reply=False, html=False):
+            self.enviados.append((texto, html)); return {"message_id": 2}
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("$NVDA moves. NVDA holds.", ticker="NVDA"),
+          estado="programado")
+    bot = _Bot()
+    enviar_pendientes(q, bot)
+    texto, html = bot.enviados[0]
+    assert not html and "<pre>" not in texto
+    assert "SALE SOLO" in texto

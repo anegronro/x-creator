@@ -250,15 +250,7 @@ def _texto_item(item, sale=None) -> str:
         partes += [f"ángulo: {item.approach}"]
     if item.reply_hook:
         partes += [f"gancho: {item.reply_hook}"]
-    avisos = []
-    if item.numeros_no_justificados:
-        avisos.append(f"CIFRAS SIN FUENTE: {', '.join(item.numeros_no_justificados)}")
-    if getattr(item, "truncado", False):
-        avisos.append("TEXTO CORTADO a media frase")
-    if getattr(item, "idioma_incorrecto", False):
-        avisos.append("NO ESTÁ EN INGLÉS")
-    if getattr(item, "tickers_faltantes", None):
-        avisos.append(f"FALTA EL TICKER: {', '.join(item.tickers_faltantes)}")
+    avisos = _avisos_de(item)
     if avisos:
         partes += ["", "⚠️ " + " | ".join(avisos)]
     return "\n".join(partes)
@@ -293,7 +285,36 @@ def mensaje_para_copiar(item) -> str:
             "",
             _escapar(item.url_origen),
         ]
+    # Las notas van DESPUÉS y fuera del bloque: dentro del <pre> se copiarían
+    # con el texto y acabarían publicadas.
+    notas = []
+    if getattr(item, "ticker", ""):
+        notas.append(f"sobre ${_escapar(item.ticker)}")
+    notas.append(f"{len(item.texto_final)} caracteres")
+    avisos = _avisos_de(item)
+    partes += ["", f"<i>{' · '.join(notas)}</i>"]
+    if avisos:
+        partes += [f"<b>{_escapar(' / '.join(avisos))}</b>"]
     return "\n".join(partes)
+
+
+def _avisos_de(item) -> list[str]:
+    """Lo que hay que mirar antes de publicar algo. Compartido por los dos
+    formatos de mensaje, para que no se olvide uno en el camino."""
+    avisos = []
+    if getattr(item, "numeros_no_justificados", None):
+        avisos.append(f"CIFRAS SIN FUENTE: {', '.join(item.numeros_no_justificados)}")
+    if getattr(item, "truncado", False):
+        avisos.append("TEXTO CORTADO a media frase")
+    if getattr(item, "idioma_incorrecto", False):
+        avisos.append("NO ESTÁ EN INGLÉS")
+    if getattr(item, "tickers_faltantes", None):
+        avisos.append(f"FALTA EL TICKER: {', '.join(item.tickers_faltantes)}")
+    if getattr(item, "usa_raya", False):
+        avisos.append("LLEVA UNA RAYA")
+    if getattr(item, "cifras_mal", None):
+        avisos.append(f"CIFRAS MAL FORMATEADAS: {', '.join(item.cifras_mal)}")
+    return avisos
 
 
 def intent_respuesta(texto: str, url_origen: str) -> str | None:
@@ -343,6 +364,17 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
     proyeccion = queue.proyeccion_de_salida()
     n = 0
     for item in sin_enviar[:limite]:
+        if item.kind == "reply":
+            # X no deja publicar replies por API desde feb 2026, así que esto
+            # se copia y se pega a mano. Un bloque <pre> lleva botón de copiar
+            # nativo en iOS y Android; el texto suelto obliga a seleccionar a
+            # dedo entre las notas. La función existía y no la llamaba nadie.
+            res = bot.send(mensaje_para_copiar(item), html=True,
+                           botones=_botones(item.id, item))
+            queue.update(item.id, metricas={
+                **item.metricas, "telegram_message_id": res.get("message_id")})
+            n += 1
+            continue
         imagen = Path(item.imagen) if item.imagen else None
         if imagen is not None and imagen.exists():
             # Con gráfico se manda la foto: aprobar una imagen sin verla es
