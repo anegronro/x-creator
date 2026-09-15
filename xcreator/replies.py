@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from xcreator.brief import Brief
+from xcreator.cripto import ACTIVOS
 from xcreator.generate import (
     MAX_CHARS, _parece_cortado, es_ingles, falta_ticker, validate_numbers,
 )
@@ -77,6 +78,16 @@ class Mencion:
                 if re.search(rf"\b{re.escape(nombre)}\b", bajo):
                     encontrados.add(ticker)
 
+        # Los activos digitales se nombran casi siempre por su nombre
+        # ("Bitcoin falls under $77,000", "Ripple CEO..."), no por el
+        # cashtag. Sin esto, una cuenta de cripto pasa entera por el filtro
+        # sin producir un solo reply.
+        bajo_texto = self.texto.lower()
+        for cfg in ACTIVOS.values():
+            if any(re.search(rf"\b{re.escape(a)}\b", bajo_texto)
+                   for a in cfg.alias):
+                encontrados.add(cfg.ticker)
+
         for sigla in _SIGLA.findall(self.texto):
             if sigla not in _NO_SON_TICKERS:
                 encontrados.add(sigla)
@@ -117,7 +128,9 @@ class Relevancia:
 
 
 def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
-                         nombres: dict[str, str] | None = None) -> Relevancia:
+                         nombres: dict[str, str] | None = None,
+                         cripto: Callable[[str], Brief | None] | None = None,
+                         ) -> Relevancia:
     """Empareja un post ajeno con un brief nuestro. Determinista y previo al modelo.
 
     Devolver `Relevancia(None, ...)` es un resultado legítimo y frecuente: la
@@ -136,6 +149,17 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
             return Relevancia(
                 por_ticker[t], ticker=t,
                 motivo=f"tenemos análisis propio de {t} con cifras y fuente")
+    # Cripto va después de las acciones a propósito: si un post menciona las
+    # dos cosas, el análisis de la empresa es más específico. Y se consulta
+    # de forma perezosa —solo si el post nombra un activo— para no pedir
+    # precios en cada pasada del vigilante.
+    if cripto is not None:
+        for t in sorted(tickers):
+            b = cripto(t)
+            if b is not None:
+                return Relevancia(
+                    b, ticker=t,
+                    motivo=f"tenemos datos de precio de {t} con fuente y fecha")
     return Relevancia(
         None,
         motivo=(f"menciona {', '.join(sorted(tickers))}, que no cubrimos. "
@@ -144,10 +168,21 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
 
 
 _SYSTEM_REPLY = """You write replies on X for a finance account. A reply's only \
-job is to add a fact the original post does not have.
+job is to add something the original post does not have.
+
+Usually that is a number. Sometimes it isn't, and forcing one in is worse \
+than not replying: a post about a bill moving through the Senate, an \
+exchange shutting down, or an executive's remark does not get a price \
+statistic bolted onto it. Answer what the post is actually about. A sharp \
+distinction, a consequence the post skips, or a question that makes the \
+claim testable all count as adding something — and on a post with no \
+numbers in it, they are the only honest way to reply.
 
 Hard rules:
-1. Use ONLY numbers from the brief. Not one other figure.
+1. Use ONLY numbers from the brief. Not one other figure. This does not mean \
+you must use a number: it means any number you use comes from there.
+1c. Match the register of the post you are answering. Reply to a regulatory \
+or news post on its own terms; reply to a price post with the price data.
 1b. Never cite an internal score or rating: the reader cannot see it or \
 verify it. Use prices, multiples, growth assumptions and ranges.
 2. Never compliment, never agree without adding something, never say "great \
@@ -157,11 +192,13 @@ accounts throttled.
 winning. The best replies make the original author want to answer.
 4. Never tell anyone to buy or sell.
 5. No links. No hashtags. No emoji.
-5b. Mention the ticker BOTH ways: as a cashtag ($NVDA) and as plain text \
-(NVDA). X indexes them separately and a small account cannot afford to skip \
+5b. Mention the ticker or asset BOTH ways: as a cashtag ($NVDA, $BTC) and as \
+plain text (NVDA, BTC). X indexes them separately and a small account cannot afford to skip \
 half the discovery.
 6. Stand alone: someone reading only your reply should learn something \
 without opening the parent post.
+6b. When the brief is a digital asset, remember there is no valuation model \
+behind it — no filings, no cash flow. Never imply a fair value or a target.
 7. If the brief genuinely has nothing that bears on this post, say so by \
 setting `aporta_algo` to false. Declining is a correct answer and is better \
 than a generic reply.
@@ -184,7 +221,8 @@ def _modelo():
         )
         texto: str = Field(description="El reply en inglés, <= 240 caracteres")
         que_aporta: str = Field(
-            description="En una frase: el dato nuevo que añade a la conversación"
+            description="En una frase: qué añade a la conversación (un dato, "
+                        "una distinción o una consecuencia que el post omite)"
         )
 
     return ReplyOut

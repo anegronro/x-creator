@@ -23,6 +23,10 @@ class Cuenta:
     # Ángulo del Cerebro que mejor encaja (ver cerebro.ANGULOS).
     angulo: str = "valuacion"
     activa: bool = True
+    # Tope propio de replies al día. 0 = solo manda el tope global.
+    # Una cuenta de titulares en vivo publica decenas de posts al día: sin
+    # esto, una sola cuenta se come el cupo entero y el resto no se mira.
+    tope_diario: int = 0
     notas: str = ""
 
     def normalizado(self) -> str:

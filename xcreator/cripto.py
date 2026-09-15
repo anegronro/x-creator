@@ -255,3 +255,27 @@ def mejores_temas(api_key: str | None, *, minimo: float = 1.0
         if lec is not None and lec.tension >= minimo:
             lecturas.append(lec)
     return sorted(lecturas, key=lambda l: l.tension, reverse=True)
+
+
+def activo_por_ticker(ticker: str) -> Activo | None:
+    """El activo cuyo cashtag coincide. None si no lo cubrimos."""
+    t = (ticker or "").upper().lstrip("$")
+    return next((a for a in ACTIVOS.values() if a.ticker == t), None)
+
+
+def brief_para(ticker: str, api_key: str | None,
+               tasa10: tuple[str, float] | None = None) -> Brief | None:
+    """Brief de un activo concreto, tenga o no tensión hoy.
+
+    `mejores_temas` filtra por tensión porque decide sobre QUÉ publicar por
+    iniciativa propia. Para responderle a alguien la pregunta es otra: si
+    menciona Bitcoin, lo que hace falta es tener datos de Bitcoin, aunque hoy
+    no sea el tema más jugoso.
+    """
+    from xcreator.datos import price_history
+
+    cfg = activo_por_ticker(ticker)
+    if cfg is None:
+        return None
+    lec = leer(cfg, price_history(cfg.simbolo, api_key, dias=DIAS_HISTORICO))
+    return brief_cripto(lec, tasa10) if lec is not None else None

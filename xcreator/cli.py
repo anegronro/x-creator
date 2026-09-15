@@ -581,7 +581,26 @@ def vigilar(
                f"para emparejar.\n")
     leidos = relevantes = encolados = 0
 
+    # Los briefs de cripto se piden solo si un post nombra un activo: una
+    # cuenta de titulares menciona Bitcoin cada dos posts, pero la mayoría de
+    # las pasadas no lo menciona nadie y pedir precios entonces es tirar
+    # llamadas.
+    cache_cripto: dict[str, object] = {}
+
+    def brief_cripto_de(ticker: str):
+        from xcreator.cripto import brief_para
+
+        t = ticker.upper()
+        if t not in cache_cripto:
+            cache_cripto[t] = brief_para(t, s.fmp_api_key)
+        return cache_cripto[t]
+
     for cuenta in activas:
+        # Tope propio de la cuenta, antes de gastar una sola lectura de X.
+        if cuenta.tope_diario and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario:
+            typer.echo(f"  {cuenta.handle}: ya lleva su tope de "
+                       f"{cuenta.tope_diario} hoy.")
+            continue
         try:
             posts = cliente.posts_recientes(
                 cuenta.handle, limite=limite,
@@ -601,6 +620,9 @@ def vigilar(
             # de cron.sh evita el solape, y esto lo hace exacto igual.
             if q.replies_de_hoy() >= s.replies_por_dia:
                 break
+            if (cuenta.tope_diario
+                    and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario):
+                break
             # Solo conversaciones vivas: a las pocas horas responder es
             # hablarle a un hilo que ya nadie mira.
             from xcreator.publicar import edad_horas
@@ -610,7 +632,8 @@ def vigilar(
                 continue
             m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
                         post_id=p.post_id)
-            rel = encontrar_relevancia(m, briefs, nombres)
+            rel = encontrar_relevancia(m, briefs, nombres,
+                                       cripto=brief_cripto_de)
             if not rel.aporta:
                 if detalle:
                     typer.echo(f"  -- {cuenta.handle}: {rel.motivo}")

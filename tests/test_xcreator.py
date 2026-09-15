@@ -2561,3 +2561,70 @@ def test_los_replies_de_ayer_no_gastan_el_cupo_de_hoy(tmp_path):
     ayer = (date.today() - timedelta(days=1)).isoformat() + "T10:00:00+00:00"
     q.update(i.id, creado=ayer)
     assert q.replies_de_hoy() == 0
+
+
+# --- replies: cripto y tope por cuenta ------------------------------------
+
+def test_el_filtro_reconoce_activos_por_su_nombre():
+    """Las cuentas de cripto escriben «Bitcoin», no «$BTC»."""
+    from xcreator.replies import Mencion
+
+    assert "BTC" in Mencion("@w", "JUST IN: Bitcoin falls under $77,000").tickers()
+    assert "XRP" in Mencion("@w", "Ripple CEO calls for the Senate to act").tickers()
+    assert "ETH" in Mencion("@w", "Ethereum fees hit a new low").tickers()
+    assert "BTC" not in Mencion("@w", "Nvidia CEO meets Trump").tickers()
+
+
+def test_la_accion_gana_al_cripto_cuando_se_mencionan_las_dos():
+    """El análisis de una empresa es más específico que un dato de precio."""
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    b = Brief(kind="target_range", ticker="NVDA", angle="a")
+    cripto = Brief(kind="cripto", ticker="BTC", angle="b")
+    r = encontrar_relevancia(
+        Mencion("@w", "Nvidia $NVDA buys Bitcoin"), [b], None,
+        cripto=lambda t: cripto if t == "BTC" else None)
+    assert r.ticker == "NVDA"
+
+
+def test_el_post_de_cripto_encuentra_su_brief():
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    cripto = Brief(kind="cripto", ticker="BTC", angle="b")
+    r = encontrar_relevancia(
+        Mencion("@w", "JUST IN: Bitcoin falls under $77,000"), [], None,
+        cripto=lambda t: cripto if t == "BTC" else None)
+    assert r.aporta and r.ticker == "BTC"
+
+
+def test_sin_cripto_el_filtro_se_comporta_como_antes():
+    """Las llamadas viejas no cambian de resultado."""
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    r = encontrar_relevancia(Mencion("@w", "Bitcoin falls under $77,000"), [])
+    assert not r.aporta
+
+
+def test_el_tope_por_cuenta_cuenta_solo_esa_cuenta(tmp_path):
+    """Una cuenta de titulares en vivo se comería el cupo global entera."""
+    from xcreator.store import Queue
+
+    from xcreator.replies import ReplyDraft
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(ReplyDraft(texto="r1", que_aporta="x", autor="@WatcherGuru",
+                     ticker="BTC"))
+    q.add(ReplyDraft(texto="r2", que_aporta="x", autor="@zerohedge",
+                     ticker="NVDA"))
+    assert q.replies_de_hoy("@WatcherGuru") == 1
+    assert q.replies_de_hoy("zerohedge") == 1
+    assert q.replies_de_hoy() == 2
+
+
+def test_la_cuenta_declara_su_propio_tope():
+    from xcreator.watchlist import Cuenta
+
+    assert Cuenta("@x").tope_diario == 0, "0 = solo manda el tope global"
+    assert Cuenta("@x", tope_diario=1).tope_diario == 1

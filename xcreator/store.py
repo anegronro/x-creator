@@ -207,17 +207,23 @@ class Queue:
             item_id, estado="publicado", publicado_en=_now(), post_id=post_id,
         )
 
-    def replies_de_hoy(self) -> int:
+    def replies_de_hoy(self, autor: str = "") -> int:
         """Cuántos replies se han propuesto hoy (los descartados incluidos).
 
         Cuenta lo PROPUESTO, no lo publicado: el coste que se quiere limitar
         es el de mirar cada uno, y eso ocurre aunque luego se descarte.
+
+        Con `autor`, solo los dirigidos a esa cuenta — que es como se aplica
+        un tope por cuenta sin tocar el global.
         """
         from datetime import date
 
         hoy = date.today().isoformat()
+        quien = autor.lstrip("@").lower()
         return sum(1 for i in self.load()
-                   if i.kind == "reply" and (i.creado or "")[:10] == hoy)
+                   if i.kind == "reply" and (i.creado or "")[:10] == hoy
+                   and (not quien
+                        or (i.responde_a or "").lstrip("@").lower() == quien))
 
     def minutos_desde_ultima_publicacion(self) -> float | None:
         """Minutos desde el último post publicado, o None si no hay ninguno."""
