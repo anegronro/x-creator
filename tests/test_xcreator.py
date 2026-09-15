@@ -2821,3 +2821,15 @@ def test_el_texto_limpio_sigue_pasando(tmp_path):
         "$NVDA was $78,818.79 at 44.60x. NVDA holds only if growth stays 40%.",
         ticker="NVDA")
     assert revisar_antes_de_publicar(item) == []
+
+
+def test_el_cupo_de_replies_y_su_parte_de_opinion():
+    """Subido de 3 a 6 el 2026-09-15: el 3 no lo midió nadie y los replies
+    son donde está el alcance. La opinión sube a 2 para que no pase de un
+    tercio: los replies con datos son lo que diferencia la cuenta."""
+    from xcreator.config import Settings
+
+    s = Settings()
+    assert s.replies_por_dia == 6
+    assert s.replies_opinion_por_dia == 2
+    assert s.replies_opinion_por_dia * 3 <= s.replies_por_dia

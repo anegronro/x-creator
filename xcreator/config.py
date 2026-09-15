@@ -48,12 +48,19 @@ class Settings:
     # Replies al día. Cada uno cuesta tres toques manuales (X no deja
     # publicarlos por API), así que el límite no es el dinero: es el tiempo
     # de Angel. Pocos y buenos vale más que muchos y tibios.
-    replies_por_dia: int = 3
+    # Subido de 3 a 6 el 2026-09-15. El 3 lo elegí yo, sin medir nada, y la
+    # evidencia apunta al otro lado: el reply a @zerohedge sobre PLTR hizo 584
+    # impresiones el mismo día en que los posts propios hicieron entre 33 y
+    # 62. Racionar los replies era racionar justo donde está el alcance. El
+    # tope sigue existiendo porque cada reply es trabajo manual de Angel (X
+    # bloqueó publicarlos por API) y porque al agotarse corta las lecturas de
+    # X antes de gastarlas. Seis son unos diez minutos suyos al día.
+    replies_por_dia: int = 6
     # De esos, cuántos pueden ser de opinión (sin cifras propias). Los de
     # datos son lo que diferencia la cuenta; los de opinión son más fáciles
     # de producir y hay muchos más posts candidatos, así que sin este
     # sub-tope se comerían el cupo entero y el diferencial se perdería.
-    replies_opinion_por_dia: int = 1
+    replies_opinion_por_dia: int = 2
     # Y solo a posts recientes: a las tres horas la conversación ya se movió.
     horas_frescura_reply: float = 3.0
     # Solo UNA máquina puede hablar con Telegram. Dos instancias con el mismo
@@ -132,8 +139,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_handle=get("X_HANDLE"),
         x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
-        replies_por_dia=int(get("REPLIES_POR_DIA") or 3),
-        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 1),
+        replies_por_dia=int(get("REPLIES_POR_DIA") or 6),
+        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 2),
         horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
         telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
         not in ("false", "0", "no"),
