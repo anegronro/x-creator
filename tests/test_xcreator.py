@@ -2749,3 +2749,18 @@ def test_el_rechazado_tampoco_se_rehace(tmp_path):
     i = q.add(ReplyDraft(texto="r", que_aporta="x", autor="@a", url=url))
     q.rechazar(i.id, motivo="no aporta")
     assert q.ya_respondido(url)
+
+
+def test_el_tope_de_una_corrida_no_se_guarda():
+    """Subir el cupo "por hoy" tocando la config se lo queda el cron de
+    mañana. Por eso es un flag de la corrida y no un ajuste."""
+    import inspect
+
+    from xcreator.cli import vigilar
+
+    params = inspect.signature(vigilar).parameters
+    assert "cupo" in params and "cupo_opinion" in params
+    src = inspect.getsource(vigilar)
+    # El tope efectivo sale del flag, y si no, de la config.
+    assert "tope = cupo if cupo > 0 else s.replies_por_dia" in src
+    assert "s.replies_por_dia" not in src.split("tope = cupo")[1].split("\n", 1)[1]

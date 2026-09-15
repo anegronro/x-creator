@@ -522,6 +522,8 @@ def vigilar(
     encolar: bool = typer.Option(True, help="Guardar los replies en la cola."),
     detalle: bool = typer.Option(False, help="Mostrar por qué se descarta cada post."),
     desde_cero: bool = typer.Option(False, help="Ignorar lo ya leído (vuelve a pagar)."),
+    cupo: int = typer.Option(0, help="Tope de replies SOLO para esta corrida (0 = el de la config)."),
+    cupo_opinion: int = typer.Option(0, help="Tope de opinión solo para esta corrida."),
 ) -> None:
     """Lee las cuentas vigiladas y propone replies donde tengamos datos.
 
@@ -567,10 +569,16 @@ def vigilar(
 
     # El cupo diario es de TIEMPO de Angel, no de dinero: cada reply cuesta
     # tres toques manuales porque X no deja publicarlos por API.
+    # Un tope de la corrida NO se guarda en ninguna parte: subirlo "por hoy"
+    # tocando la config se lo queda el cron de mañana y nadie se acuerda.
+    tope = cupo if cupo > 0 else s.replies_por_dia
+    tope_opinion = cupo_opinion if cupo_opinion > 0 else s.replies_opinion_por_dia
+    if cupo or cupo_opinion:
+        typer.secho(f"Topes SOLO para esta corrida: {tope} replies, "
+                    f"{tope_opinion} de opinión.", fg="cyan")
     ya = q.replies_de_hoy()
-    cupo = max(0, s.replies_por_dia - ya)
-    if cupo == 0:
-        typer.echo(f"Cupo de replies agotado ({ya}/{s.replies_por_dia} hoy). "
+    if ya >= tope:
+        typer.echo(f"Cupo de replies agotado ({ya}/{tope} hoy). "
                    f"Se siguen leyendo cuentas, pero no se proponen más.")
         return
 
@@ -649,7 +657,7 @@ def vigilar(
             # proceso; con dos corridas solapadas, cada una se gastaba el
             # cupo entero y el tope de 3 acabó dejando pasar 19. El cerrojo
             # de cron.sh evita el solape, y esto lo hace exacto igual.
-            if q.replies_de_hoy() >= s.replies_por_dia:
+            if q.replies_de_hoy() >= tope:
                 break
             if (cuenta.tope_diario
                     and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario):
@@ -698,12 +706,11 @@ def vigilar(
     # se queda fuera solo por estar al final de la lista.
     for cuenta, m, horas in sorted(candidatos_opinion,
                                    key=lambda c: c[2] if c[2] is not None else 99):
-        if q.replies_de_hoy() >= s.replies_por_dia:
+        if q.replies_de_hoy() >= tope:
             break
-        if q.replies_opinion_de_hoy() >= s.replies_opinion_por_dia:
+        if q.replies_opinion_de_hoy() >= tope_opinion:
             if detalle:
-                typer.echo(f"  ~~ cupo de opinión agotado "
-                           f"({s.replies_opinion_por_dia}/día)")
+                typer.echo(f"  ~~ cupo de opinión agotado ({tope_opinion})")
             break
         if (cuenta.tope_diario
                 and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario):
@@ -718,7 +725,7 @@ def vigilar(
     s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))
     typer.echo(f"\n{leidos} posts leídos -> {relevantes} con datos nuestros "
                f"-> {encolados} propuestos. Gasto: ${cliente.gastado:.3f}. "
-               f"Cupo de hoy: {ya + encolados}/{s.replies_por_dia}")
+               f"Cupo de hoy: {ya + encolados}/{tope}")
 
 
 @app.command("temas")
