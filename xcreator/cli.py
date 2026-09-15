@@ -634,6 +634,12 @@ def vigilar(
                         post_id=p.post_id)
             rel = encontrar_relevancia(m, briefs, nombres,
                                        cripto=brief_cripto_de)
+            if (rel.solo_opinion
+                    and q.replies_opinion_de_hoy() >= s.replies_opinion_por_dia):
+                if detalle:
+                    typer.echo(f"  -- {cuenta.handle}: cupo de opinión "
+                               f"agotado ({s.replies_opinion_por_dia}/día)")
+                continue
             if not rel.aporta:
                 if detalle:
                     typer.echo(f"  -- {cuenta.handle}: {rel.motivo}")

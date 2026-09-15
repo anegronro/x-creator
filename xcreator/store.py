@@ -225,6 +225,20 @@ class Queue:
                    and (not quien
                         or (i.responde_a or "").lstrip("@").lower() == quien))
 
+    def replies_opinion_de_hoy(self) -> int:
+        """Los replies de hoy sin cifras propias.
+
+        Se distinguen por no llevar ticker: un reply de opinión no cuelga de
+        ningún brief, así que el campo queda vacío. No hace falta una marca
+        aparte.
+        """
+        from datetime import date
+
+        hoy = date.today().isoformat()
+        return sum(1 for i in self.load()
+                   if i.kind == "reply" and (i.creado or "")[:10] == hoy
+                   and not (i.ticker or "").strip())
+
     def minutos_desde_ultima_publicacion(self) -> float | None:
         """Minutos desde el último post publicado, o None si no hay ninguno."""
         from datetime import datetime, timezone

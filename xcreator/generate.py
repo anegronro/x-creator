@@ -112,6 +112,11 @@ assumption is a lie told with confidence.
 How to earn replies (this is what gets paid):
 - Take a position, then show the number that supports it. A post with no \
 position gets no replies.
+- The number serves the position, not the other way round. A post whose \
+value is a judgement — an incentive nobody names, a distinction people are \
+collapsing, what would have to be true for the consensus to hold — is a good \
+post, and it does not need a statistic bolted on to justify itself. Rule 1 \
+still binds every figure you do use; it never obliges you to use one.
 - End on something a knowledgeable person would want to answer or correct — \
 an open question, a claim they can push back on, a scenario they'd price \
 differently. Not "what do you think?", which reads as engagement bait.

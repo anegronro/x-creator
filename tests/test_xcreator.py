@@ -2628,3 +2628,84 @@ def test_la_cuenta_declara_su_propio_tope():
 
     assert Cuenta("@x").tope_diario == 0, "0 = solo manda el tope global"
     assert Cuenta("@x", tope_diario=1).tope_diario == 1
+
+
+# --- opinión: criterio sin cifras -----------------------------------------
+
+def test_reconoce_los_temas_donde_opinamos_sin_cifras():
+    from xcreator.replies import _tema_sin_cifras
+
+    assert _tema_sin_cifras("Senate Democrats to discuss the Crypto Clarity Act")
+    assert _tema_sin_cifras("US House unveils new crypto tax legislation")
+    assert _tema_sin_cifras("Cryptocurrency exchange CoinEx to shut down")
+    assert _tema_sin_cifras("Fed signals a rate cut")
+    assert _tema_sin_cifras("My cat is asleep on the keyboard") == ""
+
+
+def test_sin_ticker_pero_con_tema_hay_reply_de_opinion():
+    """Antes se descartaba: «sin datos propios, responder sería ruido». Era un
+    límite que nos pusimos, no una regla del sistema."""
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    r = encontrar_relevancia(
+        Mencion("@w", "Democrats reject Republican crypto Clarity Act draft"), [])
+    assert r.aporta and r.solo_opinion and r.brief is None
+    assert r.tema == "regulación de cripto"
+
+
+def test_los_datos_ganan_siempre_a_la_opinion():
+    """Si hay cifras propias, se responde con ellas, no con una impresión."""
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    b = Brief(kind="cripto", ticker="BTC", angle="a")
+    r = encontrar_relevancia(
+        Mencion("@w", "Bitcoin drops as the crypto Clarity Act stalls"), [],
+        None, cripto=lambda t: b if t == "BTC" else None)
+    assert not r.solo_opinion and r.ticker == "BTC"
+
+
+def test_el_reply_de_opinion_no_puede_traer_cifras_propias():
+    """Sin brief, cualquier número sería inventado. Se comprueba en código."""
+    from xcreator.replies import Mencion, Relevancia, draft_reply
+
+    class _C:
+        def __init__(self, txt): self.messages = self; self._t = txt
+        def parse(self, **kw):
+            out = type("P", (), {"aporta_algo": True, "texto": self._t,
+                                 "que_aporta": "x"})()
+            return type("R", (), {"parsed_output": out, "stop_reason": "end_turn"})()
+
+    m = Mencion("@w", "US House unveils new crypto tax legislation.")
+    rel = Relevancia(None, solo_opinion=True, tema="regulación de cripto")
+    malo = draft_reply(m, rel, None,
+                       client=_C("Taxing it at 28% kills the use case."))
+    assert malo.numeros_no_justificados and not malo.valido
+
+    bueno = draft_reply(m, rel, None, client=_C(
+        "Taxing every transfer as a disposal is what kills the use case, "
+        "not the rate anyone lands on."))
+    assert bueno.valido and bueno.brief_id == ""
+
+
+def test_el_prompt_de_opinion_prohibe_el_partidismo():
+    """La cuenta es de mercados. Que un sistema automático tome partido entre
+    partidos es un riesgo distinto del de equivocarse en una cifra."""
+    from xcreator.replies import _SYSTEM_OPINION
+
+    bajo = _SYSTEM_OPINION.lower()
+    assert "no party politics" in bajo
+    assert "no numbers" in bajo
+
+
+def test_los_replies_de_opinion_tienen_su_propio_sub_tope(tmp_path):
+    """Hay muchos más posts de opinión que de datos: sin sub-tope se comerían
+    el cupo diario y la cuenta perdería lo que la diferencia."""
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(ReplyDraft(texto="con datos", que_aporta="x", autor="@a", ticker="BTC"))
+    q.add(ReplyDraft(texto="opinión", que_aporta="x", autor="@a", ticker=""))
+    assert q.replies_de_hoy() == 2
+    assert q.replies_opinion_de_hoy() == 1

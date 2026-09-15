@@ -94,6 +94,34 @@ class Mencion:
         return encontrados
 
 
+# Temas sobre los que hay criterio aunque no haya un solo número nuestro.
+# La lista es corta a propósito: fuera de esto no es nuestra conversación, y
+# opinar de todo es como se pierde una cuenta de nicho.
+_TEMAS_SIN_CIFRAS: dict[str, tuple[str, ...]] = {
+    "regulación de cripto": (
+        "clarity act", "crypto bill", "crypto tax", "crypto legislation",
+        "stablecoin bill", "genius act", "digital asset", "cryptocurrency",
+        "crypto market structure",
+    ),
+    "estructura de mercado": (
+        "exchange", "custody", "market maker", "circuit breaker",
+        "settlement", "t+1", "short sale", "payment for order flow",
+    ),
+    "política monetaria y fiscal": (
+        "rate cut", "rate hike", "quantitative", "debt ceiling", "tariff",
+        "shutdown",
+    ),
+}
+
+
+def _tema_sin_cifras(texto: str) -> str:
+    bajo = texto.lower()
+    for tema, claves in _TEMAS_SIN_CIFRAS.items():
+        if any(k in bajo for k in claves):
+            return tema
+    return ""
+
+
 _NUM_EN_TEXTO = re.compile(r"\d[\d,]*(?:\.\d+)?")
 
 
@@ -121,10 +149,16 @@ class Relevancia:
     brief: Brief | None
     ticker: str = ""
     motivo: str = ""
+    # Sin cifras propias, pero el tema es nuestro y hay criterio que aportar.
+    # No todo lo que vale la pena decir es una estadística: un proyecto de ley
+    # o el cierre de un exchange no tienen brief y siguen siendo la
+    # conversación donde está la audiencia.
+    solo_opinion: bool = False
+    tema: str = ""
 
     @property
     def aporta(self) -> bool:
-        return self.brief is not None
+        return self.brief is not None or self.solo_opinion
 
 
 def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
@@ -141,6 +175,11 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
         return Relevancia(None, motivo="el post no trae texto")
     tickers = mencion.tickers(nombres)
     if not tickers:
+        tema = _tema_sin_cifras(mencion.texto)
+        if tema:
+            return Relevancia(
+                None, solo_opinion=True, tema=tema,
+                motivo=f"sin cifras propias, pero es {tema}: cabe criterio")
         return Relevancia(
             None, motivo="el post no menciona ninguna empresa que cubramos")
     por_ticker = {b.ticker.upper(): b for b in briefs}
@@ -160,6 +199,11 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
                 return Relevancia(
                     b, ticker=t,
                     motivo=f"tenemos datos de precio de {t} con fuente y fecha")
+    tema = _tema_sin_cifras(mencion.texto)
+    if tema:
+        return Relevancia(
+            None, solo_opinion=True, tema=tema,
+            motivo=f"sin cifras propias, pero es {tema}: cabe criterio")
     return Relevancia(
         None,
         motivo=(f"menciona {', '.join(sorted(tickers))}, que no cubrimos. "
@@ -205,6 +249,36 @@ than a generic reply.
 
 Tone: a peer adding one hard number to the conversation. One or two \
 sentences. No preamble, no "actually"."""
+
+
+_SYSTEM_OPINION = """You write replies on X for a finance account. This one is \
+different from the rest: there is no data behind it.
+
+You are answering a post about markets, policy or the industry where we hold \
+no figures of our own. That is not a reason to stay quiet — it means the \
+value of this reply is the judgement, not a statistic. Most replies under \
+these posts are cheering or booing. A reply that names the mechanism nobody \
+is naming is worth more than another number would be.
+
+Hard rules:
+1. NO NUMBERS. Not one — unless it already appears in the post you are \
+answering. You have no brief here, so any figure you write would be invented.
+2. Assert no fact beyond what the post states. You do not know what a bill \
+contains, what happened after this post, or what anyone said elsewhere. If \
+your point needs a fact you do not have, make a different point.
+3. Take a real position: a consequence the post skips, a distinction people \
+are collapsing, an incentive nobody named, or what would have to be true for \
+the headline to matter. "Interesting" is not a position.
+4. No party politics. You may say an incentive is obvious or a rule is \
+incoherent; you never take a side between parties, and you never attack a \
+person. The account is about markets, not elections.
+5. Never tell anyone to buy or sell, and never predict a price.
+6. Don't insult the author. No links, no hashtags, no emoji.
+7. If you have nothing worth saying, set aporta_algo to false. Silence is a \
+correct answer and is far better than a generic take.
+
+Tone: someone who has watched this cycle before and is unimpressed by the \
+headline. One or two sentences, no preamble."""
 
 
 class _ReplyOut:
@@ -300,26 +374,42 @@ def draft_reply(
                 model=modelo_usado,
             )
 
-    from xcreator.cerebro import ANGULOS, metodologia
-    from xcreator.generate import _system_blocks
+    cabecera = (f"POST AL QUE RESPONDES (de {mencion.autor}):\n"
+                f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n")
 
-    angulo = ANGULOS.get(brief.angulo) or ANGULOS["valuacion"]
-    metodo = metodologia(getattr(settings, "cerebro_dir", None), brief.angulo)
+    if relevancia.solo_opinion:
+        # Sin brief no hay metodología del Cerebro que aplicar: el Cerebro
+        # analiza empresas, y aquí no hay ninguna. El system va solo.
+        sistema = [{"type": "text", "text": _SYSTEM_OPINION}]
+        user = (
+            f"{cabecera}"
+            f"TEMA: {relevancia.tema}. No tenemos cifras propias sobre esto.\n\n"
+            f"Escribe UN reply de máximo {LARGO_PREFERIDO} caracteres (nunca "
+            f"más de {MAX_CHARS}), en inglés. Sin un solo número que no esté "
+            f"ya en el post de arriba. Si no tienes nada que merezca la pena, "
+            f"pon aporta_algo=false."
+        )
+    else:
+        from xcreator.cerebro import ANGULOS, metodologia
+        from xcreator.generate import _system_blocks
 
-    user = (
-        f"POST AL QUE RESPONDES (de {mencion.autor}):\n"
-        f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n"
-        f"{brief.render()}\n\n"
-        f"Escribe UN reply de máximo {LARGO_PREFERIDO} caracteres (nunca más "
-        f"de {MAX_CHARS}), en inglés, "
-        f"que añada un dato duro de arriba a esta conversación. Si nada del "
-        f"brief se relaciona de verdad con lo que dice el post, pon "
-        f"aporta_algo=false y no escribas nada."
-    )
+        angulo = ANGULOS.get(brief.angulo) or ANGULOS["valuacion"]
+        metodo = metodologia(getattr(settings, "cerebro_dir", None),
+                             brief.angulo)
+        sistema = _system_blocks(metodo, angulo)
+        user = (
+            f"{cabecera}"
+            f"{brief.render()}\n\n"
+            f"Escribe UN reply de máximo {LARGO_PREFERIDO} caracteres (nunca "
+            f"más de {MAX_CHARS}), en inglés, que añada un dato duro de arriba "
+            f"a esta conversación. Si nada del brief se relaciona de verdad "
+            f"con lo que dice el post, pon aporta_algo=false y no escribas "
+            f"nada."
+        )
 
     resp = client.messages.parse(
         model=modelo_usado, max_tokens=16000,
-        system=_system_blocks(metodo, angulo),
+        system=sistema,
         messages=[{"role": "user", "content": user}],
         output_format=_modelo(),
     )
@@ -334,7 +424,8 @@ def draft_reply(
     if not parsed.aporta_algo:
         return ReplyDraft(
             texto="", que_aporta=parsed.que_aporta, autor=mencion.autor,
-            url=mencion.url, ticker=relevancia.ticker, brief_id=brief.brief_id,
+            url=mencion.url, ticker=relevancia.ticker,
+            brief_id=brief.brief_id if brief else "",
             declinado=True, model=modelo_usado,
             motivo=("el modelo no encontró nada del brief que aporte a este "
                     "post concreto"),
@@ -343,12 +434,16 @@ def draft_reply(
     texto = parsed.texto.strip()
     # Citar una cifra del post al que respondes es legítimo y verificable:
     # está ahí, a la vista de cualquiera. Lo que no puede es inventarla.
-    permitidos = brief.allowed_numbers() + _numeros_del_texto(mencion.texto)
+    # Sin brief, lo ÚNICO citable son las cifras del post al que respondes:
+    # cualquier otra sería inventada, y esta es la comprobación que lo impide
+    # en código en vez de confiar en que el prompt se respete.
+    permitidos = (brief.allowed_numbers() if brief else []) \
+        + _numeros_del_texto(mencion.texto)
     return ReplyDraft(
         texto=texto,
         que_aporta=parsed.que_aporta,
         autor=mencion.autor, url=mencion.url, ticker=relevancia.ticker,
-        brief_id=brief.brief_id, model=modelo_usado,
+        brief_id=brief.brief_id if brief else "", model=modelo_usado,
         numeros_no_justificados=validate_numbers(texto, permitidos),
         # Contra el límite REAL de X, no contra la preferencia.
         exceso_caracteres=max(0, len(texto) - MAX_CHARS),
