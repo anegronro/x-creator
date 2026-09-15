@@ -578,8 +578,11 @@ def vigilar(
                     f"{tope_opinion} de opinión.", fg="cyan")
     ya = q.replies_de_hoy()
     if ya >= tope:
-        typer.echo(f"Cupo de replies agotado ({ya}/{tope} hoy). "
-                   f"Se siguen leyendo cuentas, pero no se proponen más.")
+        # Se corta ANTES de leer: el mensaje decía que se seguía leyendo y no
+        # era verdad. Cortar aquí es justamente lo que hace que el cupo ahorre
+        # dinero además de tiempo.
+        typer.echo(f"Cupo de replies agotado ({ya}/{tope} hoy). No se lee "
+                   f"ninguna cuenta en esta pasada: gasto $0.000.")
         return
 
     briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
