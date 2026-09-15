@@ -2721,3 +2721,31 @@ def test_las_claves_de_opinion_son_inequivocas():
     assert t("The industry moves to T+1 settlement in May") == "estructura de mercado"
     assert t("Ukraine strikes Russian refinery") == ""
     assert t("Cryptocurrency exchange CoinEx to shut down") == "regulación de cripto"
+
+
+def test_no_se_propone_dos_veces_el_mismo_post(tmp_path):
+    """Dos respuestas al mismo tweet se leen como un bot. El cursor
+    `desde_id` no basta: cualquier relectura las duplica."""
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    url = "https://x.com/FirstSquawk/status/2099825178947752379"
+    q.add(ReplyDraft(texto="r", que_aporta="x", autor="@FirstSquawk",
+                     ticker="AXP", url=url))
+    assert q.ya_respondido(url)
+    assert q.ya_respondido("2099825178947752379")
+    assert not q.ya_respondido("https://x.com/FirstSquawk/status/999")
+    assert not q.ya_respondido("")
+
+
+def test_el_rechazado_tampoco_se_rehace(tmp_path):
+    """Si se descartó, volver a proponerlo es gastar dos veces la misma mala idea."""
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    url = "https://x.com/a/status/1"
+    i = q.add(ReplyDraft(texto="r", que_aporta="x", autor="@a", url=url))
+    q.rechazar(i.id, motivo="no aporta")
+    assert q.ya_respondido(url)

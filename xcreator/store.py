@@ -225,6 +225,27 @@ class Queue:
                    and (not quien
                         or (i.responde_a or "").lstrip("@").lower() == quien))
 
+    def ya_respondido(self, url_origen: str) -> bool:
+        """True si ya hay un borrador de reply para ESE post.
+
+        El cursor `desde_id` evita releer lo ya visto, pero es un solo puntero
+        por cuenta: cualquier relectura —`--desde-cero`, un caché perdido, dos
+        corridas solapadas— vuelve a proponer el mismo post. Dos respuestas al
+        mismo tweet se leen como un bot, y eso es lo que cuesta cuentas.
+
+        Cuentan también los rechazados: si se descartó, no se rehace.
+        """
+        if not url_origen:
+            return False
+        clave = url_origen.rstrip("/").split("/")[-1]
+        if not clave:
+            return False
+        return any(
+            i.kind == "reply"
+            and (i.url_origen or "").rstrip("/").split("/")[-1] == clave
+            for i in self.load()
+        )
+
     def replies_opinion_de_hoy(self) -> int:
         """Los replies de hoy sin cifras propias.
 

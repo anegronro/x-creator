@@ -661,6 +661,13 @@ def vigilar(
             horas = edad_horas(p.post_id)
             if horas is not None and horas > s.horas_frescura_reply:
                 continue
+            # Nunca dos borradores para el mismo post: se comprueba antes de
+            # gastar una llamada al modelo.
+            if q.ya_respondido(p.url or p.post_id):
+                if detalle:
+                    typer.echo(f"  == {cuenta.handle}: ya hay un reply para "
+                               f"ese post")
+                continue
             m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
                         post_id=p.post_id)
             rel = encontrar_relevancia(m, briefs, nombres,
