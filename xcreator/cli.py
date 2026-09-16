@@ -443,19 +443,31 @@ def responder(
         texto = sys.stdin.read()
     mencion = Mencion(autor=autor, texto=texto, url=url)
 
-    # El cupo diario es de TIEMPO de Angel, no de dinero: cada reply cuesta
-    # tres toques manuales porque X no deja publicarlos por API.
+    # El cupo AVISA pero no bloquea aquí. Existe para protegerte de una
+    # avalancha que genera el vigilante solo; un reply que pides tú, con su
+    # URL en la mano, no es eso. Y este comando no lee X: el texto lo traes,
+    # así que tampoco gasta lecturas. Se sigue contando para el día.
     ya = q.replies_de_hoy()
-    cupo = max(0, s.replies_por_dia - ya)
-    if cupo == 0:
-        typer.echo(f"Cupo de replies agotado ({ya}/{s.replies_por_dia} hoy). "
-                   f"Se siguen leyendo cuentas, pero no se proponen más.")
-        return
+    if ya >= s.replies_por_dia:
+        typer.secho(f"Aviso: ya van {ya}/{s.replies_por_dia} replies hoy. "
+                    f"Este lo pediste tú, así que sigue.", fg="yellow")
 
     briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
                          limit=500)
     nombres = load_company_names(s.reportes_dir)
-    rel = encontrar_relevancia(mencion, briefs, nombres)
+
+    def _cripto(t):
+        from xcreator.cripto import brief_para
+
+        return brief_para(t, s.fmp_api_key)
+
+    def _macro(t):
+        from xcreator.macro import brief_para_post
+
+        return brief_para_post(t, s.fred_api_key)
+
+    rel = encontrar_relevancia(mencion, briefs, nombres,
+                               cripto=_cripto, macro=_macro)
 
     typer.echo(f"Post de {autor} — tickers detectados: "
                f"{', '.join(sorted(mencion.tickers(nombres))) or 'ninguno'}")
