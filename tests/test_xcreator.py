@@ -2962,3 +2962,72 @@ def test_el_post_propio_sigue_yendo_como_siempre(tmp_path):
     texto, html = bot.enviados[0]
     assert not html and "<pre>" not in texto
     assert "SALE SOLO" in texto
+
+
+# --- macro en los replies: el dato que teníamos y no usábamos --------------
+
+def test_el_post_sobre_tipos_encuentra_su_serie():
+    """«What If Warsh Shocks The Market And Keeps Rates On Hold» no
+    emparejaba con nada: ni ticker, ni cripto, ni tema de opinión."""
+    from xcreator.macro import serie_para_post
+
+    assert serie_para_post(
+        "What If Warsh Shocks The Market And Keeps Rates On Hold").serie == "DFF"
+    assert serie_para_post("The yield curve just inverted").serie == "T10Y2Y"
+    assert serie_para_post("CPI comes in hot").serie == "CPIAUCSL"
+    assert serie_para_post("Treasury yields hit a new high").serie == "DGS10"
+    assert serie_para_post("Bitcoin falls under 77,000") is None
+
+
+def test_gana_el_gatillo_mas_especifico():
+    """«yield curve» debe ganarle a «yields» cuando salen los dos."""
+    from xcreator.macro import serie_para_post
+
+    assert serie_para_post(
+        "Yields are moving and the yield curve just steepened").serie == "T10Y2Y"
+
+
+def test_el_dato_de_fred_gana_a_la_opinion():
+    """Un post sobre tipos NO es «sin cifras propias»: es donde más tenemos."""
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    b = Brief(kind="macro", ticker="", angle="a", sujeto=("fed funds",))
+    m = Mencion("@zerohedge", "What If Warsh Keeps Rates On Hold")
+    r = encontrar_relevancia(m, [], None, macro=lambda t: b)
+    assert r.aporta and not r.solo_opinion and r.brief is b
+
+
+def test_la_empresa_sigue_ganando_al_macro():
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, encontrar_relevancia
+
+    emp = Brief(kind="target_range", ticker="NVDA", angle="a")
+    mac = Brief(kind="macro", ticker="", angle="b")
+    r = encontrar_relevancia(
+        Mencion("@w", "$NVDA falls as the Fed keeps rates on hold"),
+        [emp], None, macro=lambda t: mac)
+    assert r.ticker == "NVDA"
+
+
+def test_el_reply_sin_ticker_tiene_que_nombrar_el_dato():
+    """Un reply también se lee suelto."""
+    from xcreator.brief import Brief
+    from xcreator.replies import Mencion, Relevancia, draft_reply
+
+    class _C:
+        def __init__(self, txt): self.messages = self; self._t = txt
+        def parse(self, **kw):
+            out = type("P", (), {"aporta_algo": True, "texto": self._t,
+                                 "que_aporta": "x"})()
+            return type("R", (), {"parsed_output": out,
+                                  "stop_reason": "end_turn"})()
+
+    b = Brief(kind="macro", ticker="", angle="a", sujeto=("fed funds", "the fed"))
+    m = Mencion("@zerohedge", "What If Warsh Keeps Rates On Hold")
+    rel = Relevancia(b, motivo="dato de FRED")
+    mudo = draft_reply(m, rel, None, client=_C("Holding is the tell, not the level."))
+    assert mudo.sujeto_ausente and not mudo.valido
+    claro = draft_reply(m, rel, None,
+                        client=_C("The fed funds path is the tell, not the level."))
+    assert not claro.sujeto_ausente

@@ -25,7 +25,7 @@ from typing import Any, Callable
 from xcreator.brief import Brief
 from xcreator.cripto import ACTIVOS
 from xcreator.generate import (
-    cifras_mal_formateadas, lleva_raya,
+    cifras_mal_formateadas, falta_sujeto, lleva_raya,
     MAX_CHARS, _parece_cortado, es_ingles, falta_ticker, validate_numbers,
 )
 
@@ -173,6 +173,7 @@ class Relevancia:
 def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
                          nombres: dict[str, str] | None = None,
                          cripto: Callable[[str], Brief | None] | None = None,
+                         macro: Callable[[str], Brief | None] | None = None,
                          ) -> Relevancia:
     """Empareja un post ajeno con un brief nuestro. Determinista y previo al modelo.
 
@@ -184,6 +185,14 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
         return Relevancia(None, motivo="el post no trae texto")
     tickers = mencion.tickers(nombres)
     if not tickers:
+        # Macro va antes que la opinión: un post sobre tipos o inflación no es
+        # "sin cifras propias", es justo donde más tenemos. El filtro miraba
+        # acciones y cripto y se saltaba FRED entero.
+        if macro is not None:
+            b = macro(mencion.texto)
+            if b is not None:
+                return Relevancia(
+                    b, motivo="tenemos el dato de FRED con su fecha y fuente")
         tema = _tema_sin_cifras(mencion.texto)
         if tema:
             return Relevancia(
@@ -208,6 +217,11 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
                 return Relevancia(
                     b, ticker=t,
                     motivo=f"tenemos datos de precio de {t} con fuente y fecha")
+    if macro is not None:
+        b = macro(mencion.texto)
+        if b is not None:
+            return Relevancia(
+                b, motivo="tenemos el dato de FRED con su fecha y fuente")
     tema = _tema_sin_cifras(mencion.texto)
     if tema:
         return Relevancia(
@@ -335,6 +349,7 @@ class ReplyDraft:
     tickers_faltantes: list[str] = field(default_factory=list)
     usa_raya: bool = False
     cifras_mal: list[str] = field(default_factory=list)
+    sujeto_ausente: bool = False
     # Cuando el modelo decide que no hay nada que aportar.
     declinado: bool = False
     motivo: str = ""
@@ -356,6 +371,7 @@ class ReplyDraft:
             and not self.tickers_faltantes
             and not self.usa_raya
             and not self.cifras_mal
+            and not self.sujeto_ausente
         )
 
 
@@ -472,4 +488,9 @@ def draft_reply(
         tickers_faltantes=falta_ticker(texto, relevancia.ticker),
         usa_raya=lleva_raya(texto),
         cifras_mal=cifras_mal_formateadas(texto),
+        # Un reply también se lee suelto: sin ticker que lo diga, tiene que
+        # nombrar el dato. Aplica a macro y cripto, no a los de empresa.
+        sujeto_ausente=(not relevancia.ticker
+                        and falta_sujeto(texto, getattr(brief, "sujeto", ())
+                                         if brief else ())),
     )

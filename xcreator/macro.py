@@ -29,6 +29,11 @@ class SerieMacro:
     # tiene que aparecer en el post: sin empresa no hay cashtag que diga de
     # qué se habla, y un porcentaje suelto no lo dice. Nadie es adivino.
     alias: tuple[str, ...] = ()
+    # Qué frases de un post AJENO nos hacen tener algo que decir. Va aparte de
+    # `alias` a propósito: alias responde a "cómo nombramos esto en NUESTRO
+    # texto" y gatillo a "de qué habla el suyo". Mezclarlos deja entrar por la
+    # puerta del sujeto frases que no nombran nada.
+    gatillos: tuple[str, ...] = ()
 
 
 # Catálogo deliberadamente corto: series que mueven la conversación de
@@ -37,31 +42,45 @@ SERIES: dict[str, SerieMacro] = {
     "curva": SerieMacro(
         "T10Y2Y", "the 10y-2y Treasury spread", "pct",
         "What does the shape of the curve say that the index doesn't?",
-        alias=("curve", "yield curve", "10y-2y", "10s2s", "2s10s", "two-year", "treasury")),
+        alias=("curve", "yield curve", "10y-2y", "10s2s", "2s10s", "two-year", "treasury"),
+        gatillos=("yield curve", "curve inver", "curve steep", "2s10s", "10y-2y")),
     "tasa10": SerieMacro(
         "DGS10", "the 10-year Treasury yield", "pct",
         "What equity multiple survives this risk-free rate?",
-        alias=("10-year", "10 year", "10y", "ten-year", "treasury", "long bond")),
+        alias=("10-year", "10 year", "10y", "ten-year", "treasury", "long bond"),
+        gatillos=("10-year", "10 year", "10y", "treasury yield", "long bond",
+                  "bond market", "yields", "term premium")),
     "desempleo": SerieMacro(
         "UNRATE", "the unemployment rate", "pct",
         "Is the labour market loosening fast enough to matter?", 1,
-        alias=("unemployment", "jobless", "labour market", "labor market", "payroll")),
+        alias=("unemployment", "jobless", "labour market", "labor market", "payroll"),
+        gatillos=("unemployment", "jobless", "payroll", "labor market",
+                  "labour market", "jobs report")),
     "inflacion": SerieMacro(
         "CPIAUCSL", "CPI", "count",
         "Is disinflation still happening, or did it stall?",
-        alias=("cpi", "inflation", "consumer price", "disinflation")),
+        alias=("cpi", "inflation", "consumer price", "disinflation"),
+        gatillos=("inflation", "cpi", "consumer price", "disinflation",
+                  "price pressure")),
     "hipoteca": SerieMacro(
         "MORTGAGE30US", "the 30-year mortgage rate", "pct",
         "What does this do to housing-linked demand?",
-        alias=("mortgage", "housing", "homebuy", "30-year fixed")),
+        alias=("mortgage", "housing", "homebuy", "30-year fixed"),
+        gatillos=("mortgage", "housing market", "homebuy", "home sales")),
     "fed": SerieMacro(
         "DFF", "the effective fed funds rate", "pct",
         "How much room does the Fed actually have?",
-        alias=("fed funds", "federal funds", "the fed", "policy rate", "front end")),
+        alias=("fed funds", "federal funds", "the fed", "policy rate", "front end"),
+        gatillos=("rates on hold", "rate decision", "rate cut", "rate hike",
+                  "cut rates", "hike rates", "hold rates", "fomc", "the fed",
+                  "fed funds", "policy rate", "powell", "warsh", "dot plot",
+                  "easing cycle", "tightening cycle")),
     "highyield": SerieMacro(
         "BAMLH0A0HYM2", "the high-yield credit spread", "pct",
         "Is credit pricing the same risk equities are?",
-        alias=("high yield", "high-yield", "credit spread", "junk", "hy spread", "credit market")),
+        alias=("high yield", "high-yield", "credit spread", "junk", "hy spread", "credit market"),
+        gatillos=("credit spread", "high yield", "high-yield", "junk bond",
+                  "credit market", "spreads widen")),
 }
 
 
@@ -201,3 +220,33 @@ def mejores_temas(api_key: str | None, *, minimo: float = 1.0) -> list[Lectura]:
         if l is not None and l.tension >= minimo:
             lecturas.append(l)
     return sorted(lecturas, key=lambda l: l.tension, reverse=True)
+
+
+def serie_para_post(texto: str) -> SerieMacro | None:
+    """La serie de la que trata un post ajeno. None si no es cosa nuestra.
+
+    Gana la que empareje con la frase más larga: "yield curve" debe ganarle a
+    "yields" cuando aparecen las dos, porque es más específica.
+    """
+    bajo = (texto or "").lower()
+    mejor, largo = None, 0
+    for cfg in SERIES.values():
+        for g in cfg.gatillos:
+            if g in bajo and len(g) > largo:
+                mejor, largo = cfg, len(g)
+    return mejor
+
+
+def brief_para_post(texto: str, api_key: str | None) -> Brief | None:
+    """Brief macro para responderle a un post ajeno, tenga tensión o no.
+
+    Igual que en cripto: para publicar por iniciativa propia hace falta que el
+    dato sea noticiable, pero para responder basta con tener el dato.
+    """
+    from xcreator.datos import fred_series
+
+    cfg = serie_para_post(texto)
+    if cfg is None:
+        return None
+    lec = leer(cfg, fred_series(cfg.serie, api_key))
+    return brief_macro(lec) if lec is not None else None

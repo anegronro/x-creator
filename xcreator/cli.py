@@ -606,6 +606,18 @@ def vigilar(
             cache_cripto[t] = brief_para(t, s.fmp_api_key)
         return cache_cripto[t]
 
+    cache_macro: dict[str, object] = {}
+
+    def brief_macro_de(texto: str):
+        from xcreator.macro import brief_para_post, serie_para_post
+
+        cfg = serie_para_post(texto)
+        if cfg is None:
+            return None
+        if cfg.serie not in cache_macro:
+            cache_macro[cfg.serie] = brief_para_post(texto, s.fred_api_key)
+        return cache_macro[cfg.serie]
+
     # Los posts de opinión se apartan aquí y se resuelven al final.
     candidatos_opinion: list = []
 
@@ -682,7 +694,8 @@ def vigilar(
             m = Mencion(autor=cuenta.handle, texto=p.texto, url=p.url,
                         post_id=p.post_id)
             rel = encontrar_relevancia(m, briefs, nombres,
-                                       cripto=brief_cripto_de)
+                                       cripto=brief_cripto_de,
+                                       macro=brief_macro_de)
             if rel.solo_opinion:
                 # La opinión se aparca para una SEGUNDA vuelta. Procesarla
                 # aquí la hacía competir por el cupo con los replies de
@@ -718,7 +731,8 @@ def vigilar(
         if (cuenta.tope_diario
                 and q.replies_de_hoy(cuenta.handle) >= cuenta.tope_diario):
             continue
-        rel = encontrar_relevancia(m, briefs, nombres, cripto=brief_cripto_de)
+        rel = encontrar_relevancia(m, briefs, nombres,
+                                   cripto=brief_cripto_de, macro=brief_macro_de)
         if not rel.solo_opinion:
             continue
         relevantes += 1
