@@ -34,10 +34,20 @@ class Tema:
     puntos: float = 0.0
     razones: list[str] = field(default_factory=list)
     dias_desde_ultimo: int | None = None
+    # La razón como CLAVE estable, en paralelo a la prosa de `razones`. Sin
+    # esto, el descanso solo podía rotar tickers: cambiaba la empresa y la
+    # historia era la misma. 12 de 30 posts contaban "el bear está pegado al
+    # precio" porque ese +2 manda en cuanto el mercado se calma.
+    claves: list[str] = field(default_factory=list)
 
     @property
     def ticker(self) -> str:
         return self.brief.ticker
+
+    @property
+    def clave(self) -> str:
+        """El motivo principal: el primero en añadirse es el de más peso."""
+        return self.claves[0] if self.claves else ""
 
     @property
     def tiene_historia(self) -> bool:
@@ -72,15 +82,18 @@ def evaluar(brief: Brief) -> Tema:
             t.puntos += 3
             t.razones.append("el precio cayó POR DEBAJO del escenario bajo: "
                              "la tesis se está rompiendo y decirlo es raro")
+            t.claves.append("rompe_bajo")
         elif precio_hoy > bull:
             t.puntos += 3
             t.razones.append("el precio superó el escenario alto: el modelo "
                              "se quedó corto y admitirlo genera discusión")
+            t.claves.append("rompe_alto")
 
     if movimiento is not None and abs(movimiento) >= 0.15:
         t.puntos += 2
         t.razones.append(f"se movió {movimiento:+.0%} desde el análisis: hay "
                          f"marcador que publicar")
+        t.claves.append("movimiento")
 
     # Un bear case pegado al precio de entrada no es un escenario bajo, es un
     # hueco del modelo. Publicarlo es el tipo de autocrítica que atrae replies.
@@ -88,15 +101,18 @@ def evaluar(brief: Brief) -> Tema:
         t.puntos += 2
         t.razones.append("el escenario bajo está pegado al precio de entrada: "
                          "el modelo casi no dibujó caída")
+        t.claves.append("bear_pegado")
 
     if score is not None and (score >= 8.0 or score <= 3.0):
         t.puntos += 1
         t.razones.append(f"score extremo ({score:.1f}/10): postura clara")
+        t.claves.append("score_extremo")
 
     if pe is not None and (pe >= 50 or (0 < pe <= 10)):
         t.puntos += 1
         t.razones.append(f"múltiplo extremo ({pe:.1f}x): el supuesto de "
                          f"crecimiento queda a la vista")
+        t.claves.append("pe_extremo")
 
     return t
 
@@ -119,6 +135,31 @@ def _penalizar(tema: Tema, ultimo_uso: dict[str, str], hoy: date) -> None:
     tema.razones.append(f"PERO ya salió {cuando} (-{castigo:.1f})")
 
 
+# El motivo descansa menos que el ticker: repetir empresa en una semana cansa,
+# pero repetir historia dos días seguidos ya se nota. Tres días basta para que
+# los cuatro o cinco motivos que existen vayan rotando.
+VENTANA_MOTIVO = 3
+PENALIZACION_MOTIVO = 2.5
+
+
+def _penalizar_motivo(tema: Tema, ultimo_motivo: dict[str, str], hoy: date) -> None:
+    """Resta puntos si la HISTORIA ya se contó hace poco, aunque sea con otra
+    empresa. Es lo que el descanso por ticker no veía."""
+    fecha = ultimo_motivo.get(tema.clave)
+    if not tema.clave or not fecha:
+        return
+    try:
+        dias = (hoy - date.fromisoformat(fecha)).days
+    except ValueError:
+        return
+    if dias >= VENTANA_MOTIVO:
+        return
+    castigo = PENALIZACION_MOTIVO * (VENTANA_MOTIVO - dias) / VENTANA_MOTIVO
+    tema.puntos -= castigo
+    cuando = "hoy" if dias == 0 else ("ayer" if dias == 1 else f"hace {dias} días")
+    tema.razones.append(f"PERO esa historia ya se contó {cuando} (-{castigo:.1f})")
+
+
 def _desempate(ticker: str, sello: str) -> str:
     """Orden estable dentro del día, distinto entre días."""
     return hashlib.sha1(f"{ticker.upper()}|{sello}".encode()).hexdigest()
@@ -126,6 +167,7 @@ def _desempate(ticker: str, sello: str) -> str:
 
 def ranking(briefs: list[Brief], *, minimo: float = 1.0,
             ultimo_uso: dict[str, str] | None = None,
+            ultimo_motivo: dict[str, str] | None = None,
             hoy: date | None = None) -> list[Tema]:
     """Los temas con historia, del más fuerte al más flojo.
 
@@ -138,6 +180,9 @@ def ranking(briefs: list[Brief], *, minimo: float = 1.0,
     if ultimo_uso:
         for t in temas:
             _penalizar(t, ultimo_uso, hoy)
+    if ultimo_motivo:
+        for t in temas:
+            _penalizar_motivo(t, ultimo_motivo, hoy)
     con_historia = [t for t in temas if t.puntos >= minimo]
     # El desempate rota con el día. Con seis tickers empatados a 3 puntos, un
     # sort estable devolvía SIEMPRE el mismo primero — y como `--auto` coge la
@@ -149,3 +194,26 @@ def ranking(briefs: list[Brief], *, minimo: float = 1.0,
         con_historia,
         key=lambda t: (-t.puntos, _desempate(t.ticker, sello)),
     )
+
+
+def elegir_variados(temas: list[Tema], n: int) -> list[Tema]:
+    """Los `n` mejores con ticker distinto Y, mientras se pueda, historia
+    distinta. Si no quedan historias nuevas, se repite antes que dejar un
+    hueco: un post más es mejor que ninguno, pero no a costa de la variedad
+    cuando la variedad existe."""
+    elegidos: list[Tema] = []
+    tickers: set[str] = set()
+    motivos: set[str] = set()
+    for t in temas:                      # primera vuelta: todo distinto
+        if len(elegidos) >= n:
+            break
+        if t.ticker.upper() in tickers or (t.clave and t.clave in motivos):
+            continue
+        elegidos.append(t); tickers.add(t.ticker.upper()); motivos.add(t.clave)
+    for t in temas:                      # segunda: rellenar con lo que haya
+        if len(elegidos) >= n:
+            break
+        if t.ticker.upper() in tickers:
+            continue
+        elegidos.append(t); tickers.add(t.ticker.upper())
+    return elegidos

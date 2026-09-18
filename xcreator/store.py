@@ -53,6 +53,10 @@ class Item:
     # Ruta del gráfico que acompaña al post, si lo tiene.
     imagen: str = ""
     tickers_faltantes: list[str] = field(default_factory=list)
+    # La historia que cuenta ("bear_pegado"...). Vacío en replies y en items
+    # anteriores a que existiera: no penalizan nada, que es lo correcto.
+    motivo: str = ""
+    frases_repetidas: list[str] = field(default_factory=list)
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -132,6 +136,8 @@ class Queue:
             tickers_faltantes=list(getattr(draft, "tickers_faltantes", [])),
             responde_a=getattr(draft, "autor", ""),
             url_origen=getattr(draft, "url", ""),
+            motivo=getattr(draft, "motivo", ""),
+            frases_repetidas=list(getattr(draft, "frases_repetidas", [])),
         )
         items = self.load()
         items.append(item)
@@ -363,6 +369,35 @@ class Queue:
             t = i.ticker.upper()
             if fecha and fecha > ultimo.get(t, ""):
                 ultimo[t] = fecha
+        return ultimo
+
+    def textos_recientes(self, n: int = 15) -> list[str]:
+        """Los últimos `n` posts propios que salieron o van a salir.
+
+        Cuentan los programados además de los publicados: tres borradores de
+        la misma tanda pueden repetirse entre ellos antes de salir ninguno.
+        Quince son unos tres días a cinco posts diarios.
+        """
+        propios = [i for i in self.load()
+                   if i.kind != "reply" and i.estado in ("publicado", "programado",
+                                                          "aprobado")]
+        propios.sort(key=lambda i: i.publicado_en or i.creado or "")
+        return [i.texto_final for i in propios[-n:]]
+
+    def ultimo_uso_por_motivo(self) -> dict[str, str]:
+        """{motivo: fecha del borrador más reciente que contó esa historia}.
+
+        Mismo criterio que por ticker: cuentan pendientes, programados y
+        publicados, no los rechazados. Si ya hay una historia esperando en el
+        teléfono, redactar otra igual es repetirse.
+        """
+        ultimo: dict[str, str] = {}
+        for i in self.load():
+            if i.estado == "rechazado" or not getattr(i, "motivo", ""):
+                continue
+            fecha = (i.publicado_en or i.decidido or i.creado or "")[:10]
+            if fecha and fecha > ultimo.get(i.motivo, ""):
+                ultimo[i.motivo] = fecha
         return ultimo
 
     def resumen(self) -> dict[str, int]:

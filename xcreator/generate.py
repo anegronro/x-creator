@@ -254,6 +254,70 @@ def cifras_mal_formateadas(texto: str) -> list[str]:
     return [m.group(0) for m in _CIFRA_MAL.finditer(texto)]
 
 
+# --- repetición de frases -------------------------------------------------
+# Aunque cambie la historia, el redactor tiene coletillas: "it is a rounding
+# error" salió tres veces y dos de ellas en posts seguidos. Con el "no me
+# interesa" pesando -43.2 en el algoritmo de X, un molde que cansa resta.
+_PALABRA = re.compile(r"\$[a-z]{1,5}\b|\d[\d,.]*%?x?|[a-z']+")
+
+
+def _normalizar(texto: str) -> list[str]:
+    """Palabras con las cifras y los cashtags reducidos a comodines: lo que
+    se repite es la FRASE, no el número de ese día."""
+    out = []
+    for w in _PALABRA.findall(texto.lower()):
+        if w.startswith("$"):
+            out.append("$t")
+        elif w[0].isdigit():
+            out.append("#")
+        else:
+            out.append(w)
+    return out
+
+
+# Palabras que no hacen coletilla: conectores del inglés y el vocabulario que
+# el propio brief obliga a usar. "base case assumes +40% growth" se repite
+# porque así se describen los datos, no por pereza; bloquearlo tumbaría casi
+# todos los posts de acciones. Una frase cuenta como coletilla solo si lleva
+# alguna palabra FUERA de esta lista, como "rounding" o "underwriting".
+_SIN_FIRMA = frozenset("""
+a an the and or but so if of on in at to for from by with as is are was were be
+been it its it's this that these those there here not no we our you your they
+their he she i my me what which who where when how than then just only also
+very more most less much many all any each every one two ran run when
+base bear bull case cases low high assumes assume assumed assumption growth
+earnings multiple multiples price prices range scenario scenarios model today
+pe p e x now current stock share shares upside downside
+""".split())
+
+
+def _cuatrigramas(texto: str) -> set[tuple[str, ...]]:
+    w = _normalizar(texto)
+    grams = set()
+    for i in range(len(w) - 3):
+        g = tuple(w[i:i + 4])
+        # Sin una sola palabra propia no hay coletilla, solo gramática o
+        # vocabulario del oficio ("base case assumes #", "# to # on #").
+        if not any(x not in _SIN_FIRMA and x not in ("#", "$t") for x in g):
+            continue
+        grams.add(g)
+    return grams
+
+
+def frases_repetidas(texto: str, recientes: list[str]) -> list[str]:
+    """Las coletillas que el borrador copia de posts recientes. Vacío = original.
+
+    Basta UN cuatrigrama compartido con palabra propia: "is a rounding error"
+    ya es la firma, y la frase de alrededor cambia lo justo ("it is" / "that
+    is") para que exigir dos lo dejara pasar.
+    """
+    mios = _cuatrigramas(texto)
+    halladas: set[str] = set()
+    for otro in recientes:
+        halladas |= {" ".join(g) for g in mios & _cuatrigramas(otro)}
+    return sorted(halladas)
+
+
 def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     """True si el post no dice de qué habla.
 
@@ -331,6 +395,8 @@ class Draft:
     llamada_inventada: list[str] = field(default_factory=list)
     usa_raya: bool = False
     cifras_mal: list[str] = field(default_factory=list)
+    motivo: str = ""
+    frases_repetidas: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -344,6 +410,7 @@ class Draft:
             and not self.llamada_inventada
             and not self.usa_raya
             and not self.cifras_mal
+            and not self.frases_repetidas
         )
 
     @property
@@ -568,6 +635,7 @@ def draft_posts(
     n: int = 3,
     client: Any = None,
     model: str | None = None,
+    recientes: list[str] | None = None,
 ) -> list[Draft]:
     """Pide `n` variantes y valida cada una. `client` es inyectable en tests.
 
@@ -587,8 +655,24 @@ def draft_posts(
     angulo = ANGULOS.get(brief.angulo) or ANGULOS["valuacion"]
     metodo = metodologia(getattr(settings, "cerebro_dir", None), brief.angulo)
 
+    recientes = [r for r in (recientes or []) if r.strip()]
+    # Se le enseña al redactor lo que salió estos días. No basta con pedirle
+    # "sé original": sin ver sus propios posts no sabe cuáles son sus
+    # coletillas. La comprobación en código viene después, por si acaso.
+    ya_salio = ""
+    if recientes:
+        ya_salio = (
+            "POSTS QUE YA SALIERON ESTOS DÍAS (no los repitas):\n"
+            + "\n".join(f"- {r}" for r in recientes)
+            + "\n\nNo reutilices su arranque, su estructura, su pregunta final "
+            "ni ninguna de sus frases hechas. Si uno dijo que un bear case es "
+            "\"a rounding error\", esa idea está gastada: busca otra forma de "
+            "decirlo o, mejor, otro ángulo.\n\n"
+        )
+
     user = (
         f"{brief.render()}\n\n"
+        f"{ya_salio}"
         f"REGLAS DE ESTILO DERIVADAS DE DATOS:\n{_style_rules(lecciones or [])}\n\n"
         f"Escribe {n} variantes distintas entre sí (distinto ángulo, no la "
         f"misma idea reformulada). Máximo {MAX_CHARS} caracteres por post. "
@@ -646,6 +730,7 @@ def draft_posts(
                 brief_id=brief.brief_id,
                 ticker=brief.ticker,
                 kind=brief.kind,
+                motivo=getattr(brief, "motivo", ""),
                 model=model or MODEL,
                 numeros_no_justificados=validate_numbers("\n".join(piezas), allowed),
                 exceso_caracteres=exceso,
@@ -660,6 +745,7 @@ def draft_posts(
                     if brief.kind in SIN_HISTORIAL else []),
                 usa_raya=lleva_raya("\n".join(piezas)),
                 cifras_mal=cifras_mal_formateadas("\n".join(piezas)),
+                frases_repetidas=frases_repetidas("\n".join(piezas), recientes),
             )
         )
     return drafts

@@ -178,22 +178,19 @@ def redactar(
 
         from xcreator.temas import ranking
 
-        r = ranking(briefs, ultimo_uso=q.ultimo_uso_por_ticker())
+        r = ranking(briefs, ultimo_uso=q.ultimo_uso_por_ticker(),
+                    ultimo_motivo=q.ultimo_uso_por_motivo())
         if not r:
             typer.secho("Ningún brief tiene tensión hoy. Publicar por "
                         "publicar es peor que no publicar.", fg="yellow")
             raise typer.Exit(0)
-        # Un ticker por post, no `n` posts del mismo ticker. Antes `--auto`
-        # cogía solo la cabeza del ranking y pedía n variantes de ESA empresa;
-        # con la aprobación automática, eso son n posts seguidos de lo mismo.
-        elegidos, vistos = [], set()
-        for t in r:
-            if t.ticker.upper() in vistos:
-                continue
-            vistos.add(t.ticker.upper())
-            elegidos.append(t)
-            if len(elegidos) >= max(1, n):
-                break
+        # Ticker distinto Y, mientras se pueda, historia distinta. Rotar solo
+        # tickers dejaba tres empresas contando lo mismo el mismo día.
+        from xcreator.temas import elegir_variados
+
+        elegidos = elegir_variados(r, max(1, n))
+        for t in elegidos:
+            t.brief.motivo = t.clave
         # Cada uno con su propio ángulo: tres empresas miradas con la misma
         # lente vuelven a sonar a plantilla.
         claves = list(ANGULOS)
@@ -281,7 +278,10 @@ def _redactar_planes(planes, q, s, *, lecciones, encolar: bool) -> None:
         typer.secho(f"── {tema.ticker} · {a.titulo}", fg="cyan", bold=True)
         if tema.razones:
             typer.echo(f"   {tema.razones[0]}")
-        drafts = draft_posts(brief, s, lecciones=lecciones, n=2)
+        # Se recalcula en cada vuelta: el borrador de la empresa anterior de
+        # ESTA tanda ya está en la cola y tampoco hay que copiarlo.
+        drafts = draft_posts(brief, s, lecciones=lecciones, n=2,
+                             recientes=q.textos_recientes())
         if not drafts:
             typer.secho(f"   sin borradores para {tema.ticker}", fg="red",
                         err=True)
@@ -355,7 +355,7 @@ def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
     # Una sola variante a la cola. Las otras son repuesto, no posts extra:
     # encolarlas todas eran n posts seguidos del mismo activo, el mismo fallo
     # que ya costó tres posts de la misma serie macro en un día.
-    drafts = draft_posts(brief, s, n=n)
+    drafts = draft_posts(brief, s, n=n, recientes=q.textos_recientes())
     if drafts:
         _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
                            brief, q, s, encolar=encolar)
@@ -937,7 +937,7 @@ def _redactar_macro(q, s, *, n: int, encolar: bool) -> None:
 
     # Una sola a la cola: las demás son repuesto. Encolarlas todas puso tres
     # posts del mismo dato macro en un día.
-    drafts = draft_posts(brief, s, n=n)
+    drafts = draft_posts(brief, s, n=n, recientes=q.textos_recientes())
     if drafts:
         _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
                            brief, q, s, encolar=encolar)

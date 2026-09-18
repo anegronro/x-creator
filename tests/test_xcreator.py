@@ -3031,3 +3031,112 @@ def test_el_reply_sin_ticker_tiene_que_nombrar_el_dato():
     claro = draft_reply(m, rel, None,
                         client=_C("The fed funds path is the tell, not the level."))
     assert not claro.sujeto_ausente
+
+
+# --- variedad de HISTORIA, no solo de ticker -------------------------------
+
+def test_cada_tema_sabe_que_historia_cuenta():
+    from xcreator.temas import evaluar
+
+    t = evaluar(_brief_con(precio_hoy=150.0))      # por debajo del bear
+    assert t.clave == "rompe_bajo"
+    assert "rompe_bajo" in t.claves
+
+
+def test_la_historia_contada_hace_poco_baja_en_el_ranking():
+    """12 de 30 posts contaban "el bear está pegado al precio": el descanso
+    solo rotaba tickers, así que cambiaba la empresa y no la historia."""
+    from datetime import date, timedelta
+
+    from xcreator.temas import ranking
+
+    hoy = date(2026, 9, 18)
+    b = _brief_con(precio_hoy=150.0)
+    clave = ranking([b], hoy=hoy)[0].clave
+    sin = ranking([b], hoy=hoy)[0].puntos
+    con = ranking([b], hoy=hoy,
+                  ultimo_motivo={clave: str(hoy - timedelta(days=1))})
+    assert not con or con[0].puntos < sin
+
+
+def test_la_tanda_elige_historias_distintas_si_las_hay():
+    from xcreator.brief import Brief
+    from xcreator.temas import Tema, elegir_variados
+
+    def t(tk, clave, pts):
+        return Tema(Brief(kind="target_range", ticker=tk, angle="a"),
+                    puntos=pts, claves=[clave])
+
+    temas = [t("AAA", "bear_pegado", 5), t("BBB", "bear_pegado", 4),
+             t("CCC", "movimiento", 3), t("DDD", "pe_extremo", 2)]
+    elegidos = elegir_variados(temas, 3)
+    assert [e.ticker for e in elegidos] == ["AAA", "CCC", "DDD"]
+
+
+def test_si_no_hay_historias_nuevas_repite_antes_que_dejar_hueco():
+    from xcreator.brief import Brief
+    from xcreator.temas import Tema, elegir_variados
+
+    temas = [Tema(Brief(kind="target_range", ticker=tk, angle="a"),
+                  puntos=p, claves=["bear_pegado"])
+             for tk, p in (("AAA", 5), ("BBB", 4), ("CCC", 3))]
+    assert len(elegir_variados(temas, 3)) == 3
+
+
+def test_la_cola_recuerda_que_historia_se_conto(tmp_path):
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("$NVDA a. NVDA b.", ticker="NVDA", motivo="bear_pegado"))
+    r = q.add(_draft("$AMD a. AMD b.", ticker="AMD", motivo="movimiento"))
+    q.rechazar(r.id, motivo="no")
+    assert "bear_pegado" in q.ultimo_uso_por_motivo()
+    assert "movimiento" not in q.ultimo_uso_por_motivo(), "lo rechazado no cuenta"
+
+
+# --- coletillas -----------------------------------------------------------
+
+def test_caza_la_coletilla_aunque_cambie_la_frase_de_alrededor():
+    """«it is a rounding error» salió tres veces, dos en posts seguidos."""
+    from xcreator.generate import frases_repetidas
+
+    antes = ["The bear case on $CLSK is $13.22. That is not a bear case, "
+             "that is a rounding error."]
+    assert frases_repetidas(
+        "The bear case on $DIS is $104.28. It is a rounding error.", antes)
+    assert frases_repetidas(
+        "$VRT at 69x. Who is underwriting the +40%?",
+        ["$ANET at 68x. Who is underwriting the +40%?"])
+
+
+def test_el_vocabulario_del_oficio_no_es_una_coletilla():
+    """Así se describen los datos: bloquearlo tumbaría casi todos los posts."""
+    from xcreator.generate import frases_repetidas
+
+    assert frases_repetidas("The base case assumes +40% growth for $NVDA.",
+                            ["Our base case assumes +8% growth for $AXP."]) == []
+    assert frases_repetidas("Solana moves with appetite for risk.",
+                            ["The bear case on $CLSK is a rounding error."]) == []
+
+
+def test_el_borrador_que_repite_no_nace_programado(tmp_path):
+    """Pasa a pendiente con el motivo a la vista, no se pierde en silencio."""
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("$DIS x. DIS y.", ticker="DIS",
+                     frases_repetidas=["is a rounding error"]),
+              estado="programado")
+    assert q.get(i.id).estado == "pendiente"
+    assert q.get(i.id).frases_repetidas == ["is a rounding error"]
+
+
+def test_los_recientes_incluyen_lo_programado(tmp_path):
+    """Tres borradores de la misma tanda pueden copiarse entre ellos antes de
+    que salga ninguno."""
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(_draft("$NVDA uno. NVDA.", ticker="NVDA"), estado="programado")
+    q.add(_draft("$AMD dos. AMD.", ticker="AMD"))                 # pendiente
+    assert q.textos_recientes() == ["$NVDA uno. NVDA."]

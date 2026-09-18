@@ -60,6 +60,10 @@ class Brief:
     # Cómo puede nombrarse el tema cuando no hay empresa. Los briefs de
     # ticker lo dejan vacío: ahí el cashtag ya dice de qué se habla.
     sujeto: tuple[str, ...] = ()
+    # La historia que cuenta este brief ("bear_pegado", "movimiento"...). La
+    # pone el ranking; viaja hasta la cola para que mañana se sepa qué
+    # historia se contó hoy.
+    motivo: str = ""
 
     @property
     def brief_id(self) -> str:
