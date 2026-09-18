@@ -45,25 +45,54 @@ def menciona_partidismo(texto: str) -> list[str]:
     return sorted({m.group(0).lower() for m in _PARTIDISTA.finditer(texto)})
 
 
-def claves_regulacion() -> tuple[str, ...]:
-    """Las frases que marcan un titular de regulación de cripto.
+# Qué es "regulación de cripto" se decide con DOS condiciones y no con una
+# lista de frases. La primera versión buscaba frases fijas ("crypto
+# regulation") y se saltó "CFTC files new rulemaking to regulate crypto
+# transactions": mismo significado, otro orden, y un regulador nombrado que
+# la lista no conocía. Hace falta contexto cripto Y una señal regulatoria.
+_CONTEXTO_CRIPTO = re.compile(
+    r"\b(crypto\w*|bitcoin|btc|ether(eum)?|xrp|ripple|solana|stablecoins?|"
+    # "tokens" a secas NO: WatcherGuru también publica de IA ("Anthropic cuts
+    # token prices under new EU rules") y eso no es regulación de cripto.
+    r"tokeni[sz]ed|digital assets?|defi|blockchain|coinbase|binance|"
+    r"kraken|web3)\b", re.IGNORECASE)
 
-    Salen de las mismas claves que usa el filtro de replies: una sola lista
-    para decidir qué es "regulación de cripto" en todo el sistema.
-    """
-    from xcreator.replies import _TEMAS_SIN_CIFRAS
+# Entidades concretas: reguladores, cámaras y leyes con nombre. Son lo que el
+# post tiene que nombrar, porque son lo que el lector reconoce.
+_ENTIDADES = re.compile(
+    r"\b(sec|cftc|occ|fdic|irs|doj|treasury|congress|senate|house|"
+    r"federal reserve|clarity act|genius act|stablecoin bill|"
+    r"market structure bill|atkins|lummis)\b", re.IGNORECASE)
 
-    return _TEMAS_SIN_CIFRAS["regulación de cripto"]
+_SENAL = re.compile(
+    r"\b(regulat\w*|rulemaking|rules?|bill|act|laws?|legislat\w*|"
+    r"sanction\w*|bans?|banned|approv\w*|lawsuit|sues?|sued|court|"
+    r"enforcement|compliance|framework|oversight|tax(es|ation)?|licen[cs]\w*)\b",
+    re.IGNORECASE)
+
+
+def es_regulacion_cripto(texto: str) -> bool:
+    """Contexto cripto y, además, una señal regulatoria o un regulador."""
+    return bool(_CONTEXTO_CRIPTO.search(texto)
+                and (_SENAL.search(texto) or _ENTIDADES.search(texto)))
 
 
 def sujeto_del_titular(texto: str) -> tuple[str, ...]:
-    """Qué nombra el titular, para exigir que el post lo nombre también.
+    """Qué tiene que nombrar el post: la entidad concreta del titular.
 
-    Si el titular habla del Clarity Act, un post que solo diga "the bill"
-    obliga al lector a adivinar. Se exige la misma pieza del titular.
+    Si el titular habla de la CFTC, un post que solo diga "regulators" obliga
+    al lector a adivinar quién. Solo cuentan las entidades con nombre; las
+    palabras genéricas ("crypto", "regulate") detectan el tema pero no lo
+    nombran. Sin entidad, se cae a la señal regulatoria del titular.
     """
-    bajo = texto.lower()
-    return tuple(k for k in claves_regulacion() if k in bajo)
+    if not es_regulacion_cripto(texto):
+        return ()
+    entidades = tuple(dict.fromkeys(m.group(0).lower()
+                                    for m in _ENTIDADES.finditer(texto)))
+    if entidades:
+        return entidades
+    return tuple(dict.fromkeys(m.group(0).lower()
+                               for m in _SENAL.finditer(texto)))
 
 
 @dataclass

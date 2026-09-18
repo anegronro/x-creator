@@ -3268,3 +3268,40 @@ def test_regulacion_no_puede_atribuirse_llamadas():
     from xcreator.generate import SIN_HISTORIAL
 
     assert "regulacion" in SIN_HISTORIAL
+
+
+def test_regulacion_se_detecta_por_contexto_y_senal_no_por_frase_fija():
+    """La primera versión buscaba «crypto regulation» y se saltó «CFTC files new
+    rulemaking to regulate crypto transactions»: mismo sentido, otro orden."""
+    from xcreator.regulacion import es_regulacion_cripto as r
+
+    assert r("CFTC files new rulemaking to regulate crypto transactions")
+    assert r("SEC Chair Paul Atkins says approving tokenized stock trading")
+    assert r("US sanctions BitBank crypto exchange for supporting Iran")
+    assert not r("JPMorgan says Bitcoin could outperform gold")
+    assert not r("Bitcoin surges 5% to $80,000")
+    assert not r("Federal Reserve now projected to raise interest rates")
+
+
+def test_un_titular_de_ia_no_es_regulacion_de_cripto():
+    from xcreator.regulacion import es_regulacion_cripto
+
+    assert not es_regulacion_cripto("Anthropic cuts token prices under new EU rules")
+
+
+def test_el_post_tiene_que_nombrar_la_entidad_concreta():
+    """"regulators" obliga a adivinar quién; "CFTC" no."""
+    from xcreator.regulacion import sujeto_del_titular
+
+    assert sujeto_del_titular(
+        "CFTC files new rulemaking to regulate crypto transactions") == ("cftc",)
+
+
+def test_replies_y_posts_clasifican_igual_el_mismo_titular():
+    """Una lista de frases en cada sitio acaba clasificando distinto."""
+    from xcreator.regulacion import es_regulacion_cripto
+    from xcreator.replies import _tema_sin_cifras
+
+    t = "CFTC files new rulemaking to regulate crypto transactions"
+    assert es_regulacion_cripto(t)
+    assert _tema_sin_cifras(t) == "regulación de cripto"

@@ -124,6 +124,18 @@ _TEMAS_SIN_CIFRAS: dict[str, tuple[str, ...]] = {
 
 
 def _tema_sin_cifras(texto: str) -> str:
+    # La regulación de cripto se decide en un solo sitio, con la misma regla
+    # que usan los posts propios: una lista de frases aquí y otra allí acaba
+    # clasificando distinto el mismo titular.
+    from xcreator.regulacion import es_regulacion_cripto
+
+    if es_regulacion_cripto(texto):
+        return "regulación de cripto"
+    # Las frases de la lista siguen valiendo como respaldo en los REPLIES:
+    # "Cryptocurrency exchange CoinEx to shut down" no tiene regulador ni
+    # señal regulatoria, así que no da para un post propio de regulación,
+    # pero sí para un reply con criterio. Los posts propios usan la regla
+    # estricta; aquí basta con que sea conversación de nuestro nicho.
     bajo = texto.lower()
     for tema, claves in _TEMAS_SIN_CIFRAS.items():
         if any(k in bajo for k in claves):
