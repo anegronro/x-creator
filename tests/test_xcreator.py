@@ -3420,6 +3420,24 @@ def test_el_efecto_imagen_solo_mira_posts_del_sistema():
         return Post(pid, "t", None, imp, 0, 0, 0, 0, 0, 0)
 
     posts = [p("a", 100), p("b", 200), p("manual", 9999)]
-    f = efecto_imagen(posts, {"a": True, "b": False})
+    f = efecto_imagen(posts, {"a": ("target_range", True),
+                              "b": ("target_range", False)})["target_range"]
     assert f.n_con == 1 and f.n_sin == 1, "el manual no entra"
     assert not f.suficiente, "con 1 por lado no hay veredicto"
+
+
+def test_el_efecto_imagen_no_mezcla_tipos():
+    """Juntar tipos dio 84 contra 29 con p<0.001 y era tema, no gráfica: las
+    de acciones tenían imagen y las de cripto nunca la habían tenido."""
+    from xcreator.analytics import Post, efecto_imagen
+
+    def p(pid, imp):
+        return Post(pid, "t", None, imp, 0, 0, 0, 0, 0, 0)
+
+    posts = [p(f"a{i}", 90) for i in range(10)] + [p(f"c{i}", 25) for i in range(10)]
+    sistema = {**{f"a{i}": ("target_range", True) for i in range(10)},
+               **{f"c{i}": ("cripto", False) for i in range(10)}}
+    r = efecto_imagen(posts, sistema)
+    assert set(r) == {"target_range", "cripto"}
+    assert not r["target_range"].suficiente, "sin posts de acciones SIN imagen"
+    assert not r["cripto"].suficiente, "sin posts de cripto CON imagen"

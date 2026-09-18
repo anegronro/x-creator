@@ -66,22 +66,27 @@ def analizar(
         typer.echo(f" {marca} {f.feature:<16} {f.mediana_con:>7.3%} vs "
                    f"{f.mediana_sin:>7.3%}  {f.veredicto}")
 
-    # ¿Las gráficas suben el alcance? Solo se puede saber con los posts que
-    # publicó el sistema: la cola sabe cuáles llevaban imagen; el CSV no.
+    # ¿Las gráficas suben el alcance? Se compara DENTRO de cada tipo de post:
+    # juntarlos todos mide el tema y no la imagen (dio 84 contra 29 con
+    # p<0.001, y era que las de acciones tenían gráfica y las de cripto no).
     from xcreator.analytics import efecto_imagen
 
     q_, _ = _queue()
-    con_imagen = {i.post_id: bool(i.imagen) for i in q_.load()
-                  if i.estado == "publicado" and i.post_id and i.kind != "reply"}
-    fi = efecto_imagen(posts, con_imagen)
-    typer.echo("\n--- ¿Las gráficas suben el alcance? (solo posts del sistema) ---")
-    typer.echo(f"   con gráfica  n={fi.n_con:<3} mediana {fi.mediana_con:>6,.0f} imp")
-    typer.echo(f"   sin gráfica  n={fi.n_sin:<3} mediana {fi.mediana_sin:>6,.0f} imp")
-    if fi.suficiente:
-        typer.echo(f"   p={fi.p_value:.3f}" if fi.p_value is not None else "   p=n/a")
-    else:
-        typer.secho(f"   Muestra insuficiente: hacen falta {MIN_GROUP} por lado. "
-                    f"No hay veredicto todavía.", fg="yellow")
+    del_sistema = {i.post_id: (i.kind, bool(i.imagen)) for i in q_.load()
+                   if i.estado == "publicado" and i.post_id and i.kind != "reply"}
+    typer.echo("\n--- ¿Las gráficas suben el alcance? (dentro de cada tipo) ---")
+    hay_veredicto = False
+    for tipo, f in efecto_imagen(posts, del_sistema).items():
+        linea = (f"   {tipo:13} con gráfica n={f.n_con:<3} med {f.mediana_con:>5,.0f}"
+                 f"  |  sin gráfica n={f.n_sin:<3} med {f.mediana_sin:>5,.0f}")
+        if f.suficiente and f.p_value is not None:
+            hay_veredicto = True
+            typer.echo(linea + f"  p={f.p_value:.3f}")
+        else:
+            typer.echo(linea + "  sin veredicto")
+    if not hay_veredicto:
+        typer.secho(f"   Ningún tipo tiene {MIN_GROUP} posts por lado todavía. "
+                    f"Mezclar tipos mediría el tema, no la gráfica.", fg="yellow")
 
     # El alcance es una pregunta distinta a la conversación: un link no cambia
     # tu reply RATE (es un ratio) pero sí puede hundir las impresiones.

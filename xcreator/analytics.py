@@ -640,34 +640,40 @@ def mix_de_alcance(posts: list[Post]) -> MixDeAlcance:
     )
 
 
-def efecto_imagen(posts: list[Post], con_imagen: dict[str, bool],
-                  metric: str = "impressions") -> Finding:
-    """¿Rinde más un post del sistema con gráfica que sin ella?
+def efecto_imagen(posts: list[Post], del_sistema: dict[str, tuple[str, bool]],
+                  metric: str = "impressions") -> dict[str, Finding]:
+    """¿Rinde más un post con gráfica que sin ella? Comparado DENTRO de cada tipo.
 
-    Solo entran los posts que publicó el sistema (`con_imagen` viene de la
-    cola, indexado por post_id): son los únicos de los que se SABE si
-    llevaban imagen. El CSV de X no lo dice, y los posts manuales de Angel
-    también pueden llevar una; mezclarlos contaría como "sin imagen" posts
-    que sí la tenían.
+    La primera versión comparaba todos los posts con gráfica contra todos los
+    sin ella, y dio 84 contra 29 con p<0.001. Era casi todo tema: los de
+    acciones llevaban gráfica y los de cripto y macro no la habían tenido
+    nunca. Comparar acciones con gráfica contra cripto sin ella mide el tema,
+    no la imagen. Solo vale comparar dentro de un mismo tipo.
 
-    Se construyó para comprobar una hipótesis y no para confirmarla: la idea
-    de que las gráficas suben el alcance salía de UN solo par (158 vistas con
-    gráfica contra 10 sin ella). Con MIN_GROUP por lado o no hay veredicto.
+    `del_sistema` es {post_id: (tipo, llevaba_imagen)}, sacado de la cola:
+    solo los posts del sistema, porque son los únicos de los que se SABE si
+    llevaban imagen. Devuelve un Finding por tipo; `suficiente` exige
+    MIN_GROUP por lado, y sin eso no hay veredicto.
     """
-    del_sistema = [p for p in posts if p.post_id in con_imagen]
-    con = [getattr(p, metric) for p in del_sistema if con_imagen[p.post_id]]
-    sin = [getattr(p, metric) for p in del_sistema if not con_imagen[p.post_id]]
-    med_con = statistics.median(con) if con else 0.0
-    med_sin = statistics.median(sin) if sin else 0.0
-    suficiente = len(con) >= MIN_GROUP and len(sin) >= MIN_GROUP
-    return Finding(
-        feature="tiene_grafica",
-        n_con=len(con),
-        n_sin=len(sin),
-        mediana_con=med_con,
-        mediana_sin=med_sin,
-        lift=(med_con - med_sin) / med_sin if med_sin > 0 else None,
-        p_value=_mannwhitney(con, sin) if suficiente else None,
-        suficiente=suficiente,
-        metric=metric,
-    )
+    por_tipo: dict[str, tuple[list[float], list[float]]] = {}
+    for p in posts:
+        if p.post_id not in del_sistema:
+            continue
+        tipo, img = del_sistema[p.post_id]
+        con, sin = por_tipo.setdefault(tipo, ([], []))
+        (con if img else sin).append(getattr(p, metric))
+
+    out: dict[str, Finding] = {}
+    for tipo, (con, sin) in sorted(por_tipo.items()):
+        med_con = statistics.median(con) if con else 0.0
+        med_sin = statistics.median(sin) if sin else 0.0
+        suficiente = len(con) >= MIN_GROUP and len(sin) >= MIN_GROUP
+        out[tipo] = Finding(
+            feature=f"grafica_en_{tipo}",
+            n_con=len(con), n_sin=len(sin),
+            mediana_con=med_con, mediana_sin=med_sin,
+            lift=(med_con - med_sin) / med_sin if med_sin > 0 else None,
+            p_value=_mannwhitney(con, sin) if suficiente else None,
+            suficiente=suficiente, metric=metric,
+        )
+    return out
