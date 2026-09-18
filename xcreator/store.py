@@ -261,8 +261,10 @@ class Queue:
         clave = url_origen.rstrip("/").split("/")[-1]
         if not clave:
             return False
+        # Replies y citas juntos: responder Y citar el mismo post también se
+        # lee como spam.
         return any(
-            i.kind == "reply"
+            i.kind in ("reply", "cita")
             and (i.url_origen or "").rstrip("/").split("/")[-1] == clave
             for i in self.load()
         )
@@ -325,6 +327,14 @@ class Queue:
             proyeccion[i.id] = t
             base = t + timedelta(minutes=espaciado)
         return proyeccion
+
+    def citas_de_hoy(self) -> int:
+        """Citas propuestas hoy. No gastan el cupo de replies: son otra cosa."""
+        from datetime import date
+
+        hoy = date.today().isoformat()
+        return sum(1 for i in self.load()
+                   if i.kind == "cita" and (i.creado or "")[:10] == hoy)
 
     def replies_opinion_de_hoy(self) -> int:
         """Los replies de hoy sin cifras propias.

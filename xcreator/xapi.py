@@ -13,7 +13,7 @@ leído. De ahí dos decisiones:
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import httpx
@@ -33,6 +33,20 @@ class PostAjeno:
     autor: str
     texto: str
     creado: str = ""
+    # like_count, reply_count, retweet_count, quote_count... Pedirlas no
+    # cuesta más: X cobra por post leído, no por campo.
+    metricas: dict = field(default_factory=dict)
+
+    @property
+    def conversacion(self) -> int:
+        """Replies + citas + reposts: lo que dice que el post está VIVO.
+
+        Los likes no cuentan: pesan 0.5 en el algoritmo y no traen a nadie a
+        la conversación, que es donde una cita se deja ver.
+        """
+        m = self.metricas or {}
+        return (m.get("reply_count", 0) + m.get("quote_count", 0)
+                + m.get("retweet_count", 0))
 
     @property
     def url(self) -> str:
@@ -133,7 +147,7 @@ class ClienteX:
         params = {
             "max_results": limite,
             "exclude": "replies,retweets",
-            "tweet.fields": "created_at",
+            "tweet.fields": "created_at,public_metrics",
         }
         if desde_id:
             params["since_id"] = desde_id
@@ -146,7 +160,8 @@ class ClienteX:
         self.gastado -= reserva - COSTO_POST_LEIDO * len(devueltos)
         return [
             PostAjeno(post_id=t["id"], autor=handle, texto=t.get("text", ""),
-                      creado=t.get("created_at", ""))
+                      creado=t.get("created_at", ""),
+                      metricas=t.get("public_metrics") or {})
             for t in devueltos
         ]
 

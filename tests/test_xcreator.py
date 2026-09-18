@@ -3602,3 +3602,106 @@ def test_nadie_pide_una_serie_macro_por_fuera_de_serie_de():
         for n, linea in enumerate(f.read_text().splitlines(), 1):
             if re.search(r"fred_series\(cfg\.serie", linea):
                 assert f.name == "macro.py", f"{f.name}:{n}"
+
+
+# --- citas: el titular con más conversación, pegado a mano ------------------
+
+def _id_reciente(n=0):
+    """Un id de X de hace una hora: el id lleva la fecha dentro, y "1" o "2"
+    parecen posts de 2010 que el filtro de 24 horas descarta."""
+    import time
+    from xcreator.publicar import _EPOCA_X_MS
+    ms = int(time.time() * 1000) - 3_600_000
+    return str(((ms - _EPOCA_X_MS) << 22) + n)
+
+
+def _post_ajeno(pid, texto, rt=0, rep=0, quo=0, likes=0, autor="@zerohedge"):
+    from xcreator.xapi import PostAjeno
+    return PostAjeno(pid, autor, texto, metricas={
+        "retweet_count": rt, "reply_count": rep, "quote_count": quo,
+        "like_count": likes})
+
+
+def test_la_conversacion_cuenta_replies_citas_y_reposts_no_likes():
+    """Los likes pesan 0.5 y no traen a nadie a la conversación."""
+    p = _post_ajeno("1", "x", rt=10, rep=5, quo=2, likes=9999)
+    assert p.conversacion == 17
+
+
+def test_se_cita_el_post_con_mas_conversacion_que_aporte_algo():
+    from xcreator.citas import elegir_para_citar
+    from xcreator.replies import Relevancia
+
+    a, b, c = _id_reciente(1), _id_reciente(2), _id_reciente(3)
+    posts = [_post_ajeno(a, "irrelevante", rep=500),
+             _post_ajeno(b, "Fed keeps rates on hold", rep=40),
+             _post_ajeno(c, "CPI comes in hot", rep=90)]
+
+    def rel(p):
+        return Relevancia(object(), motivo="x") if p.post_id != a \
+            else Relevancia(None, motivo="no")
+
+    elegido, _ = elegir_para_citar(posts, rel, excluir=set())
+    assert elegido.post_id == c, "el de más conversación CON algo que aportar"
+
+
+def test_no_se_cita_lo_que_ya_se_respondio():
+    """Responder y citar el mismo post se lee como spam."""
+    from xcreator.citas import elegir_para_citar
+    from xcreator.replies import Relevancia
+
+    c, b = _id_reciente(3), _id_reciente(2)
+    posts = [_post_ajeno(c, "CPI comes in hot", rep=90), _post_ajeno(b, "Fed", rep=40)]
+    elegido, _ = elegir_para_citar(
+        posts, lambda p: Relevancia(object(), motivo="x"), excluir={c})
+    assert elegido.post_id == b
+
+
+def test_la_cita_no_se_publica_por_api(tmp_path):
+    """Misma restricción que los replies. Y NO se usa el atajo de pegar el
+    enlace del post para que X lo convierta en cita."""
+    from xcreator.publicar import revisar_antes_de_publicar
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(ReplyDraft(texto="The Fed guided it there.", que_aporta="x",
+                         autor="@business", kind="cita",
+                         url="https://x.com/business/status/1"))
+    q.aprobar(i.id)
+    assert any("citas no se pueden publicar" in p
+               for p in revisar_antes_de_publicar(q.get(i.id)))
+
+
+def test_la_cita_no_gasta_el_cupo_de_replies(tmp_path):
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(ReplyDraft(texto="c", que_aporta="x", autor="@a", kind="cita",
+                     url="https://x.com/a/status/1"))
+    assert q.citas_de_hoy() == 1 and q.replies_de_hoy() == 0
+
+
+def test_una_cita_y_un_reply_al_mismo_post_cuentan_como_ya_tocado(tmp_path):
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    q.add(ReplyDraft(texto="c", que_aporta="x", autor="@a", kind="cita",
+                     url="https://x.com/a/status/77"))
+    assert q.ya_respondido("https://x.com/a/status/77")
+
+
+def test_la_cita_llega_con_instrucciones_de_citar_no_de_responder(tmp_path):
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+    from xcreator.telegram import mensaje_para_copiar
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(ReplyDraft(texto="The Fed guided it there.", que_aporta="x",
+                         autor="@business", kind="cita",
+                         url="https://x.com/business/status/1"))
+    txt = mensaje_para_copiar(q.get(i.id))
+    assert "CITAR" in txt and "<b>Citar</b>" in txt
+    assert "<pre>The Fed guided it there.</pre>" in txt

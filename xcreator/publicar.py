@@ -150,6 +150,13 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
         problemas.append(
             "los replies a otras cuentas no se pueden publicar por API "
             "(restricción de X desde feb 2026): cópialo y pégalo a mano")
+    if item.kind == "cita":
+        # Misma restricción que los replies. El atajo de pegar el enlace del
+        # post al final para que X lo convierta en cita NO se usa: es rodear
+        # una restricción de la plataforma.
+        problemas.append(
+            "las citas no se pueden publicar por API (misma restricción que "
+            "los replies): cópiala y cítala a mano")
     # Un reply a una conversación muerta es dinero tirado.
     if item.url_origen:
         origen = item.url_origen.rstrip("/").split("/")[-1]

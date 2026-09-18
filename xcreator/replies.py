@@ -351,6 +351,8 @@ class ReplyDraft:
     que_aporta: str
     autor: str
     url: str = ""
+    # "reply" o "cita". La cola deriva el tipo de aquí.
+    kind: str = "reply"
     ticker: str = ""
     brief_id: str = ""
     model: str = ""
@@ -394,6 +396,7 @@ def draft_reply(
     *,
     client: Any = None,
     model: str | None = None,
+    modo: str = "reply",
 ) -> ReplyDraft:
     """Redacta un reply, o devuelve uno marcado como declinado.
 
@@ -421,8 +424,18 @@ def draft_reply(
                 model=modelo_usado,
             )
 
-    cabecera = (f"POST AL QUE RESPONDES (de {mencion.autor}):\n"
-                f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n")
+    if modo == "cita":
+        cabecera = (f"POST QUE VAS A CITAR (de {mencion.autor}):\n"
+                    f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n"
+                    "Esto NO es un reply: es una CITA. Sale en TU perfil y en "
+                    "el feed de tus seguidores, con el post de arriba incrustado "
+                    "debajo. Escríbelo como una toma tuya que se entiende sola "
+                    "junto al original: no le hables al autor (nada de \"you\"), "
+                    "no repitas lo que el post ya dice, di lo que tú ves que él "
+                    "no dice.\n\n")
+    else:
+        cabecera = (f"POST AL QUE RESPONDES (de {mencion.autor}):\n"
+                    f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n")
 
     if relevancia.solo_opinion:
         # Sin brief no hay metodología del Cerebro que aplicar: el Cerebro
@@ -488,6 +501,7 @@ def draft_reply(
         + _numeros_del_texto(mencion.texto)
     return ReplyDraft(
         texto=texto,
+        kind=modo,
         que_aporta=parsed.que_aporta,
         autor=mencion.autor, url=mencion.url, ticker=relevancia.ticker,
         brief_id=brief.brief_id if brief else "", model=modelo_usado,

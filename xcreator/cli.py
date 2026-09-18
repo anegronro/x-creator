@@ -645,6 +645,101 @@ def responder(
         typer.echo(f"  -> cola id {item.id}")
 
 
+@app.command("citar")
+def citar(
+    limite: int = typer.Option(10, help="Posts a leer por cuenta."),
+    encolar: bool = typer.Option(True, help="Guardar la cita en la cola."),
+) -> None:
+    """Redacta UNA cita del titular con más conversación del día.
+
+    X no deja publicar citas por API, así que llega a Telegram para pegarla a
+    mano, igual que los replies.
+    """
+    from xcreator.brief import con_precio, load_briefs
+    from xcreator.citas import CITAS_POR_DIA, elegir_para_citar
+    from xcreator.datos import live_price, load_company_names
+    from xcreator.replies import Mencion, draft_reply, encontrar_relevancia
+    from xcreator.watchlist import Watchlist
+    from xcreator.xapi import ClienteX, XAPIError
+
+    q, s = _queue()
+    if q.citas_de_hoy() >= CITAS_POR_DIA:
+        typer.echo(f"Ya hay {q.citas_de_hoy()} cita hoy (tope {CITAS_POR_DIA}).")
+        return
+    cuentas = {c.normalizado(): c for c in
+               Watchlist.cargar(s.watchlist_path).activas()}
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+
+    posts = []
+    for c in cuentas.values():
+        try:
+            posts += cliente.posts_recientes(c.handle, limite=limite)
+        except XAPIError as e:
+            typer.secho(f"  {c.handle}: {e}", fg="yellow")
+
+    briefs = load_briefs(s.reportes_dir, None, limit=500)
+    nombres = load_company_names(s.reportes_dir)
+
+    def _cripto(t):
+        from xcreator.cripto import brief_para
+
+        return brief_para(t, s.fmp_api_key)
+
+    def _macro(t):
+        from xcreator.macro import brief_para_post
+
+        return brief_para_post(t, s.fred_api_key)
+
+    def relevancia_de(p):
+        return encontrar_relevancia(
+            Mencion(autor=p.autor, texto=p.texto, url=p.url, post_id=p.post_id),
+            briefs, nombres, cripto=_cripto, macro=_macro)
+
+    # Nunca citar lo que ya se respondió o se citó: tocar dos veces el mismo
+    # post se lee como spam.
+    excluir = {(i.url_origen or "").rstrip("/").split("/")[-1]
+               for i in q.load() if i.kind in ("reply", "cita") and i.url_origen}
+    post, rel = elegir_para_citar(posts, relevancia_de, excluir)
+    typer.echo(f"{len(posts)} posts leídos de {len(cuentas)} cuentas. "
+               f"Gasto: ${cliente.gastado:.3f}")
+    if post is None:
+        typer.secho("Nada que citar con algo que aportar. Mejor callar.",
+                    fg="yellow")
+        return
+
+    typer.echo(f"Elegido ({post.conversacion} de conversación, {post.autor}): "
+               f"{post.texto[:100]}")
+    if rel.brief is not None:
+        cuenta = cuentas.get(post.autor.lstrip("@").lower())
+        rel.brief = con_precio(s.reportes_dir, rel.brief,
+                               lambda t: live_price(t, s.fmp_api_key))
+        if cuenta:
+            rel.brief.angulo = cuenta.angulo
+    m = Mencion(autor=post.autor, texto=post.texto, url=post.url,
+                post_id=post.post_id)
+    d = draft_reply(m, rel, s, modo="cita")
+    if d.declinado:
+        typer.secho(f"Declinado: {d.motivo}", fg="yellow")
+        return
+    estado = "OK" if d.valido else "REVISAR"
+    typer.secho(f"\n[{estado}] cita a {post.autor}", fg="green" if d.valido else "yellow")
+    typer.echo(f"  {d.texto}")
+    if not encolar:
+        return
+    q.add(d)
+    try:
+        from xcreator.telegram import bot_desde, enviar_pendientes
+
+        enviar_pendientes(q, bot_desde(s), limite=3)
+    except Exception as e:  # noqa: BLE001
+        typer.secho(f"  (no se pudo avisar por Telegram: {e})", fg="yellow")
+
+
 @app.command("watchlist")
 def watchlist(
     add: str = typer.Option("", help="Añadir un handle."),

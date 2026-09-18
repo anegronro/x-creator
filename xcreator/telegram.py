@@ -269,8 +269,10 @@ def mensaje_para_copiar(item) -> str:
     teléfonos, así que no se puede depender de ellos. Un bloque de código sí
     lleva botón de copiar nativo en Telegram, en iOS y en Android.
     """
+    es_cita = getattr(item, "kind", "") == "cita"
     partes = [
-        f"<b>Responder a {_escapar(item.responde_a)}</b>",
+        (f"<b>CITAR a {_escapar(item.responde_a)}</b>  (sale en tu perfil)"
+         if es_cita else f"<b>Responder a {_escapar(item.responde_a)}</b>"),
         "",
         "1. Toca el bloque para copiarlo:",
         f"<pre>{_escapar(item.texto_final)}</pre>",
@@ -282,9 +284,13 @@ def mensaje_para_copiar(item) -> str:
             "   (Si lo abres con un toque normal, cae en el navegador interno "
             "de Telegram, que no lleva tu sesión de X y te pide login. Desde "
             "ahí, la brújula de abajo a la derecha también sirve.)",
-            "",
-            _escapar(item.url_origen),
         ]
+        if es_cita:
+            partes += [
+                "3. En el post, toca el botón de <b>repost</b> (las dos flechas) "
+                "y elige <b>Citar</b>. Pega el texto y publica.",
+            ]
+        partes += ["", _escapar(item.url_origen)]
     # Las notas van DESPUÉS y fuera del bloque: dentro del <pre> se copiarían
     # con el texto y acabarían publicadas.
     notas = []
@@ -370,7 +376,7 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
     proyeccion = queue.proyeccion_de_salida()
     n = 0
     for item in sin_enviar[:limite]:
-        if item.kind == "reply":
+        if item.kind in ("reply", "cita"):
             # X no deja publicar replies por API desde feb 2026, así que esto
             # se copia y se pega a mano. Un bloque <pre> lleva botón de copiar
             # nativo en iOS y Android; el texto suelto obliga a seleccionar a
