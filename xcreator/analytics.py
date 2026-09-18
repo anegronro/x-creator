@@ -515,8 +515,21 @@ class ReporteCuenta:
 
     @property
     def factor_faltante(self) -> float:
-        """Cuántas veces hay que multiplicar el alcance actual."""
-        return UMBRAL_IMPRESIONES / max(self.impresiones_90d, 1.0)
+        """Cuántas veces hay que multiplicar el ritmo diario actual.
+
+        Compara RITMOS, no totales. Antes dividía el umbral de 90 días entre
+        las impresiones del CSV, y con un export de 7 días decía "123x"
+        cuando el ritmo real (5,809/día contra 55,556 necesarias) da 9.6x:
+        comparaba una semana contra un trimestre.
+        """
+        necesario = UMBRAL_IMPRESIONES / VENTANA_DIAS
+        return necesario / max(self.ritmo_diario_90d, 1e-9)
+
+    @property
+    def es_proyeccion(self) -> bool:
+        """True si el CSV cubre menos de la ventana del programa: el factor se
+        calcula sobre el ritmo de esos días, no sobre 90 reales."""
+        return self.dias < VENTANA_DIAS
 
     @property
     def dias_sin_publicar_pct(self) -> float:

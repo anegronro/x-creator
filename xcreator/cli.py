@@ -524,7 +524,10 @@ def _analizar_cuenta(csv: Path) -> None:
     typer.echo(f"Requisito: {UMBRAL_IMPRESIONES:,} impresiones en "
                f"{VENTANA_DIAS} días (solo de usuarios Premium).")
     typer.echo(f"Tienes:    {r.impresiones_90d:,.0f}")
-    typer.secho(f"Falta multiplicar el alcance por {r.factor_faltante:,.0f}x "
+    if r.es_proyeccion:
+        typer.echo(f"(el CSV cubre {r.dias} días: el ritmo sale de esos días, "
+                   f"no de 90 reales)")
+    typer.secho(f"Falta multiplicar el ritmo por {r.factor_faltante:,.1f}x "
                 f"({r.ritmo_diario_90d:,.0f} impresiones/día hoy vs "
                 f"{UMBRAL_IMPRESIONES/VENTANA_DIAS:,.0f} necesarias).",
                 fg="red" if r.factor_faltante > 10 else "yellow")

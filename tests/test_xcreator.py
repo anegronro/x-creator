@@ -675,7 +675,11 @@ def test_cuenta_mide_la_distancia_al_umbral(tmp_path):
     r = analyze_account(load_account_days(
         _write_csv(tmp_path / "c.csv", filas, _CUENTA_HEADER)))
     assert r.impresiones_90d == 300
-    assert r.factor_faltante == pytest.approx(UMBRAL_IMPRESIONES / 300)
+    # 30 días a 10/día: el ritmo es 10/día y hacen falta 5M/90 al día. Este
+    # test afirmaba antes UMBRAL/300, que compara un MES contra un trimestre:
+    # fosilizaba justo el error que hacía decir "123x" con un export semanal.
+    from xcreator.analytics import VENTANA_DIAS
+    assert r.factor_faltante == pytest.approx((UMBRAL_IMPRESIONES / VENTANA_DIAS) / 10)
 
 
 def test_diagnostico_consistencia_antes_que_contenido(tmp_path):
@@ -3441,3 +3445,18 @@ def test_el_efecto_imagen_no_mezcla_tipos():
     assert set(r) == {"target_range", "cripto"}
     assert not r["target_range"].suficiente, "sin posts de acciones SIN imagen"
     assert not r["cripto"].suficiente, "sin posts de cripto CON imagen"
+
+
+def test_el_factor_de_monetizacion_compara_ritmos_no_totales():
+    """Con un export de 7 días decía "123x": dividía el umbral de 90 días
+    entre las impresiones de UNA semana. El ritmo real daba 9.6x."""
+    from xcreator.analytics import ReporteCuenta
+
+    r = ReporteCuenta(dias=7, desde="2026-09-12", hasta="2026-09-18",
+                      impresiones_total=40_666, impresiones_90d=40_666,
+                      impresiones_30d=40_666, mediana_diaria=3_775,
+                      dias_en_cero=0, follows_netos=90, replies_total=34,
+                      mejor_dia=20_082)
+    assert round(r.ritmo_diario_90d) == 5_809
+    assert 9 < r.factor_faltante < 10, r.factor_faltante
+    assert r.es_proyeccion
