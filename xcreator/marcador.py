@@ -75,7 +75,7 @@ def brief_marcador(briefs: list[Brief]) -> Brief | None:
     facts = [Fact("acciones con precio y rango", float(len(todas)), "num",
                   "motor Warren Buffett Jr, análisis guardados")]
     for f in abajo + arriba:
-        facts.append(Fact(f"{f.ticker} {ETIQUETA}", round(f.fuera, 1), "pct",
+        facts.append(Fact(f"{f.ticker} {ETIQUETA}", round(f.fuera, 1), "pct_val",
                           "precio de hoy (FMP) contra el rango de 12m del modelo"))
         facts.append(Fact(f"{f.ticker} precio hoy", round(f.precio, 2), "usd", "FMP"))
     fuera_total = sum(1 for f in todas if f.fuera != 0)

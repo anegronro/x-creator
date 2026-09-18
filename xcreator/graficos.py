@@ -179,6 +179,8 @@ def grafico_rango(serie: list[tuple[str, float]], destino: Path, *,
             return f"{v:.2f}%"
         if formato == "num":               # un índice, como el IPC: sin "$"
             return f"{v:,.1f}"
+        if formato == "pp":                # un diferencial, en puntos
+            return f"{v:+.2f} pp"
         return f"${v:,.4f}" if v < 10 else f"${v:,.2f}"
 
     fig, ax = plt.subplots(figsize=(12, 6.75), dpi=135)
@@ -220,6 +222,8 @@ def grafico_rango(serie: list[tuple[str, float]], destino: Path, *,
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:.1f}%")
     elif formato == "num":
         ax.yaxis.set_major_formatter(lambda v, _: f"{v:,.0f}")
+    elif formato == "pp":
+        ax.yaxis.set_major_formatter(lambda v, _: f"{v:+.2f}")
     else:
         ax.yaxis.set_major_formatter(
             lambda v, _: f"${v:,.2f}" if hi < 10 else f"${v:,.0f}")

@@ -27,7 +27,14 @@ class Fact:
 
     label: str
     value: float
-    unit: str  # "usd" | "pct" | "ratio" | "score" | "count"
+    # "pct"     = FRACCIÓN que se lee como porcentaje: 0.40 es 40%.
+    # "pct_val" = valor que YA es un porcentaje: 5.01 es 5.01%.
+    # "pp"      = puntos porcentuales (un diferencial de tipos): 0.54 es 0.54 pp.
+    # Antes solo existía "pct" y se usaba para las tres cosas. El formato
+    # `{:+.0%}` multiplica por 100, así que el brief le decía al modelo que el
+    # bono a 10 años estaba al "+501%" y la curva al "+54%". El modelo
+    # corregía los absurdos solo, pero el 54% parecía plausible y lo copió.
+    unit: str  # "usd" | "pct" | "pct_val" | "pp" | "ratio" | "score" | "count"
     source: str
 
     def rendered(self) -> str:
@@ -35,6 +42,11 @@ class Fact:
             return f"${self.value:,.2f}"
         if self.unit == "pct":
             return f"{self.value:+.0%}"
+        if self.unit == "pct_val":
+            return f"{self.value:.2f}%"
+        if self.unit == "pp":
+            return (f"{self.value:+.2f} percentage points "
+                    f"({self.value * 100:+.0f} bps)")
         if self.unit == "score":
             return f"{self.value:.1f}/10"
         if self.unit == "count":
@@ -74,8 +86,23 @@ class Brief:
         return f"{self.ticker}-{self.kind}-{self.angulo}-{self.as_of}"
 
     def allowed_numbers(self) -> list[float]:
-        """Los valores que el post puede citar. Todo lo demás es invento."""
-        return [f.value for f in self.facts]
+        """Las cifras que el post puede citar, en las formas que admite su unidad.
+
+        La conversión por 100 depende de la unidad y vive AQUÍ, no en el
+        validador: una fracción 0.40 se escribe "40%", pero un diferencial de
+        0.54 puntos NO se escribe "54%". El validador multiplicaba todo por 100
+        y dejó pasar la curva a "+54%".
+        """
+        out: list[float] = []
+        for f in self.facts:
+            out.append(f.value)
+            if f.unit == "pct":                  # fracción: 0.40 -> 40
+                out.append(f.value * 100)
+            # "pp" NO se multiplica: el validador no distingue el símbolo, y
+            # permitir 54 para que valga "54 bps" dejaba pasar "+54%". No hace
+            # falta: "54 bps" es un entero sin símbolo menor que 100 y el
+            # validador ya lo trata como texto. "+54%" lleva %, y falla.
+        return out
 
     def render(self) -> str:
         """El brief tal como lo ve el redactor."""

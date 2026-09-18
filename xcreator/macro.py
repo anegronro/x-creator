@@ -22,7 +22,7 @@ from xcreator.brief import Brief, Fact
 class SerieMacro:
     serie: str          # id en FRED
     nombre: str         # cómo se llama en el post, en inglés
-    unidad: str         # "pct" | "ratio" | "count"
+    unidad: str         # "pct" (ya en %) | "pp" (puntos) | "count"
     angulo: str         # la pregunta que abre este dato
     decimales: int = 2
     # Las formas en que un redactor puede nombrar este dato. Al menos una
@@ -40,7 +40,7 @@ class SerieMacro:
 # mercados y que cualquiera puede comprobar en FRED.
 SERIES: dict[str, SerieMacro] = {
     "curva": SerieMacro(
-        "T10Y2Y", "the 10y-2y Treasury spread", "pct",
+        "T10Y2Y", "the 10y-2y Treasury spread", "pp",
         "What does the shape of the curve say that the index doesn't?",
         alias=("curve", "yield curve", "10y-2y", "10s2s", "2s10s", "two-year", "treasury"),
         gatillos=("yield curve", "curve inver", "curve steep", "2s10s", "10y-2y")),
@@ -171,17 +171,20 @@ def brief_macro(lectura: Lectura) -> Brief:
     """Brief publicable a partir de una lectura macro."""
     c = lectura.cfg
     fuente = f"FRED {c.serie}, dato del {lectura.fecha}"
-    facts = [Fact(f"{c.nombre} ahora", lectura.valor, c.unidad, fuente)]
+    # FRED da las series de tipos YA en porcentaje (5.01 es 5.01%). En el
+    # brief eso es "pct_val", no "pct" (que es una fracción).
+    u = {"pct": "pct_val", "pp": "pp"}.get(c.unidad, c.unidad)
+    facts = [Fact(f"{c.nombre} ahora", lectura.valor, u, fuente)]
     if lectura.hace_un_mes is not None:
         facts.append(Fact(f"{c.nombre} hace un mes", lectura.hace_un_mes,
-                          c.unidad, fuente))
+                          u, fuente))
     if lectura.hace_un_ano is not None:
         facts.append(Fact(f"{c.nombre} hace un año", lectura.hace_un_ano,
-                          c.unidad, fuente))
+                          u, fuente))
     facts.append(Fact(f"mínimo de {c.nombre} en el histórico cargado",
-                      lectura.minimo_5a, c.unidad, fuente))
+                      lectura.minimo_5a, u, fuente))
     facts.append(Fact(f"máximo de {c.nombre} en el histórico cargado",
-                      lectura.maximo_5a, c.unidad, fuente))
+                      lectura.maximo_5a, u, fuente))
 
     donde = ("en la parte alta de su rango histórico" if lectura.percentil_5a >= 0.8
              else "en la parte baja de su rango histórico" if lectura.percentil_5a <= 0.2

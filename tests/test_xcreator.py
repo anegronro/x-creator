@@ -2709,10 +2709,14 @@ def test_los_replies_de_opinion_tienen_su_propio_sub_tope(tmp_path):
     from xcreator.store import Queue
 
     q = Queue(tmp_path / "cola.jsonl")
-    q.add(ReplyDraft(texto="con datos", que_aporta="x", autor="@a", ticker="BTC"))
+    q.add(ReplyDraft(texto="con datos", que_aporta="x", autor="@a", ticker="BTC",
+                     brief_id="BTC-cripto-mercado-2026-09-18"))
+    # Un reply de macro TAMPOCO lleva ticker, pero sí trae datos: no es opinión.
+    q.add(ReplyDraft(texto="el IPC", que_aporta="x", autor="@a", ticker="",
+                     brief_id="-macro-riesgo-2026-09-18"))
     q.add(ReplyDraft(texto="opinión", que_aporta="x", autor="@a", ticker=""))
-    assert q.replies_de_hoy() == 2
-    assert q.replies_opinion_de_hoy() == 1
+    assert q.replies_de_hoy() == 3
+    assert q.replies_opinion_de_hoy() == 1, "solo el que no cuelga de ningún brief"
 
 
 def test_las_claves_de_opinion_son_inequivocas():
@@ -3460,3 +3464,80 @@ def test_el_factor_de_monetizacion_compara_ritmos_no_totales():
     assert round(r.ritmo_diario_90d) == 5_809
     assert 9 < r.factor_faltante < 10, r.factor_faltante
     assert r.es_proyeccion
+
+
+# --- unidades: "pct" era tres cosas distintas ------------------------------
+
+def test_el_brief_no_le_miente_al_modelo_con_las_unidades():
+    """`{:+.0%}` multiplica por 100: el brief decía que el bono a 10 años
+    estaba al "+501%" y el diferencial de la curva al "+54%"."""
+    from xcreator.brief import Fact
+
+    assert Fact("10y", 5.01, "pct_val", "FRED").rendered() == "5.01%"
+    assert "0.54 percentage points" in Fact("curva", 0.54, "pp", "FRED").rendered()
+    assert Fact("crecimiento", 0.40, "pct", "modelo").rendered() == "+40%"
+
+
+def test_un_diferencial_en_puntos_no_se_puede_escribir_como_porcentaje():
+    """El post salió con "the 10y-2y Treasury spread was +54%" para 0.54
+    puntos, y la validación lo dio por bueno. Lo frenó un falso positivo."""
+    from xcreator.brief import Brief, Fact
+    from xcreator.generate import validate_numbers
+
+    b = Brief(kind="macro", ticker="", angle="a",
+              facts=[Fact("spread", 0.54, "pp", "FRED")])
+    a = b.allowed_numbers()
+    assert validate_numbers("the spread was +54%", a), "54% no puede pasar"
+    assert not validate_numbers("the spread was 54 bps", a)
+    assert not validate_numbers("the spread was +0.54 pp", a)
+
+
+def test_un_valor_ya_en_porcentaje_no_se_multiplica():
+    from xcreator.brief import Brief, Fact
+    from xcreator.generate import validate_numbers
+
+    b = Brief(kind="macro", ticker="", angle="a",
+              facts=[Fact("10y", 5.01, "pct_val", "FRED")])
+    assert not validate_numbers("the 10-year is at 5.01%", b.allowed_numbers())
+    assert validate_numbers("the 10-year is at 501%", b.allowed_numbers())
+
+
+def test_una_fraccion_si_se_escribe_como_porcentaje():
+    """El caso legítimo de la conversión: el crecimiento asumido 0.40."""
+    from xcreator.brief import Brief, Fact
+    from xcreator.generate import validate_numbers
+
+    b = Brief(kind="target_range", ticker="NVDA", angle="a",
+              facts=[Fact("crecimiento asumido", 0.40, "pct", "modelo")])
+    assert not validate_numbers("base assumes +40% growth", b.allowed_numbers())
+
+
+def test_macro_cripto_y_marcador_declaran_la_unidad_correcta():
+    from xcreator.cripto import ACTIVOS, brief_cripto, leer
+    from xcreator.macro import SERIES, brief_macro, leer as leer_m
+
+    serie = [(f"2026-0{1 + i // 30}-{1 + i % 28:02d}", 4.0 + i * 0.01)
+             for i in range(120)]
+    bm = brief_macro(leer_m(SERIES["tasa10"], serie))
+    assert all(f.unit == "pct_val" for f in bm.facts), "FRED da los tipos YA en %"
+    assert all(f.unit == "pp" for f in brief_macro(leer_m(SERIES["curva"], serie)).facts)
+
+    from datetime import date, timedelta
+    s2 = [(str(date(2026, 9, 18) - timedelta(days=119 - i)), 100 + i) for i in range(120)]
+    bc = brief_cripto(leer(ACTIVOS["btc"], s2))
+    caida = next(f for f in bc.facts if f.label.startswith("caída"))
+    assert caida.unit == "pct_val"
+
+
+def test_el_nombre_del_sujeto_no_es_una_coletilla():
+    """El detector marcó "10y-2y Treasury spread": el nombre que la regla del
+    sujeto obliga a escribir."""
+    from xcreator.brief import Brief, Fact
+    from xcreator.generate import frases_repetidas, vocabulario_del_sujeto
+
+    b = Brief(kind="macro", ticker="", angle="a", sujeto=("10y-2y", "treasury"),
+              facts=[Fact("the 10y-2y Treasury spread ahora", 0.27, "pp", "FRED")])
+    assert frases_repetidas(
+        "The 10y-2y Treasury spread was +0.52 pp a month ago.",
+        ["A year ago the 10y-2y Treasury spread was +0.54 pp."],
+        vocabulario_del_sujeto(b)) == []

@@ -1168,7 +1168,7 @@ def _grafico_macro(brief, settings, destino, firma):
     serie = fred_series(cfg.serie, settings.fred_api_key)
     ano = _valor(brief, f"{cfg.nombre} hace un año")
     mes = _valor(brief, f"{cfg.nombre} hace un mes")
-    u = "%" if cfg.unidad == "pct" else ""
+    u = {"pct": "%", "pp": " pp"}.get(cfg.unidad, "")
     partes = []
     if ano is not None:
         partes.append(f"a year ago {ano:.2f}{u}")
@@ -1178,7 +1178,7 @@ def _grafico_macro(brief, settings, destino, firma):
     return grafico_rango(
         serie, destino, titulo=f"{nombre} · where it sits in its range",
         subtitulo="   ".join(partes),
-        formato={"pct": "pct"}.get(cfg.unidad, "num"),
+        formato={"pct": "pct", "pp": "pp"}.get(cfg.unidad, "num"),
         fuente=f"Data: FRED {cfg.serie}. Observed values, not a forecast.",
         firma=firma)
 

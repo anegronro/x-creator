@@ -44,9 +44,9 @@ def _candidates(value: float) -> set[float]:
     for k in (0, 1, 2):
         out.add(round(value, k))
         out.add(round(abs(value), k))
-    # Un ratio 0.04 se escribe "4%".
-    out.update({value * 100, abs(value) * 100, round(abs(value) * 100, 1),
-                round(abs(value) * 100, 0)})
+    # La conversión por 100 NO va aquí: depende de la unidad y la decide
+    # `Brief.allowed_numbers()`. Hacerla para todo valor dejaba pasar un
+    # diferencial de 0.54 puntos escrito como "+54%".
     return out
 
 
@@ -258,7 +258,9 @@ def cifras_mal_formateadas(texto: str) -> list[str]:
 # Aunque cambie la historia, el redactor tiene coletillas: "it is a rounding
 # error" salió tres veces y dos de ellas en posts seguidos. Con el "no me
 # interesa" pesando -43.2 en el algoritmo de X, un molde que cansa resta.
-_PALABRA = re.compile(r"\$[a-z]{1,5}\b|\d[\d,.]*%?x?|[a-z']+")
+# "\d[\d,.]*[a-z%]*": "10y", "2y" o "40x" son UN comodín numérico. Antes el
+# "10y" se partía en "#" y "y", y la "y" suelta contaba como palabra propia.
+_PALABRA = re.compile(r"\$[a-z]{1,5}\b|\d[\d,.]*[a-z%]*|[a-z']+")
 
 
 def _normalizar(texto: str) -> list[str]:
@@ -288,33 +290,56 @@ very more most less much many all any each every one two ran run when
 base bear bull case cases low high assumes assume assumed assumption growth
 earnings multiple multiples price prices range scenario scenarios model today
 pe p e x now current stock share shares upside downside
+ago day days week weeks month months year years was were since versus vs
+loaded high low range sits sitting level levels spread yield index rate
+pp bp bps basis point points percentage percent
 """.split())
 
 
-def _cuatrigramas(texto: str) -> set[tuple[str, ...]]:
+def _cuatrigramas(texto: str, ignorar: frozenset[str] = frozenset()
+                  ) -> set[tuple[str, ...]]:
     w = _normalizar(texto)
+    fuera = _SIN_FIRMA | ignorar
     grams = set()
     for i in range(len(w) - 3):
         g = tuple(w[i:i + 4])
         # Sin una sola palabra propia no hay coletilla, solo gramática o
         # vocabulario del oficio ("base case assumes #", "# to # on #").
-        if not any(x not in _SIN_FIRMA and x not in ("#", "$t") for x in g):
+        if not any(x not in fuera and x not in ("#", "$t") for x in g):
             continue
         grams.add(g)
     return grams
 
 
-def frases_repetidas(texto: str, recientes: list[str]) -> list[str]:
+def vocabulario_del_sujeto(brief) -> frozenset[str]:
+    """Las palabras que nombran el tema del post. NO son coletilla.
+
+    El detector marcó como repetido "10y-2y Treasury spread": el nombre de la
+    serie, que la regla del sujeto OBLIGA a escribir. Castigaba al post por
+    cumplir otra regla. Todo lo que nombra el sujeto queda fuera.
+    """
+    palabras: set[str] = set()
+    fuentes = list(getattr(brief, "sujeto", ()) or ())
+    fuentes += [f.label for f in getattr(brief, "facts", [])]
+    if getattr(brief, "ticker", ""):
+        fuentes.append(brief.ticker)
+    for texto in fuentes:
+        palabras |= set(re.findall(r"[a-z']+", texto.lower()))
+    return frozenset(palabras)
+
+
+def frases_repetidas(texto: str, recientes: list[str],
+                     ignorar: frozenset[str] = frozenset()) -> list[str]:
     """Las coletillas que el borrador copia de posts recientes. Vacío = original.
 
     Basta UN cuatrigrama compartido con palabra propia: "is a rounding error"
     ya es la firma, y la frase de alrededor cambia lo justo ("it is" / "that
     is") para que exigir dos lo dejara pasar.
     """
-    mios = _cuatrigramas(texto)
+    mios = _cuatrigramas(texto, ignorar)
     halladas: set[str] = set()
     for otro in recientes:
-        halladas |= {" ".join(g) for g in mios & _cuatrigramas(otro)}
+        halladas |= {" ".join(g) for g in mios & _cuatrigramas(otro, ignorar)}
     return sorted(halladas)
 
 
@@ -757,7 +782,8 @@ def draft_posts(
                     if brief.kind in SIN_HISTORIAL else []),
                 usa_raya=lleva_raya("\n".join(piezas)),
                 cifras_mal=cifras_mal_formateadas("\n".join(piezas)),
-                frases_repetidas=frases_repetidas("\n".join(piezas), recientes),
+                frases_repetidas=frases_repetidas(
+                    "\n".join(piezas), recientes, vocabulario_del_sujeto(brief)),
                 partidismo=(_partidismo("\n".join(piezas))
                             if brief.kind in SIN_HISTORIAL else []),
                 fuente=getattr(brief, "fuente", ""),
