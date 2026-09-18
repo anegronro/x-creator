@@ -3541,3 +3541,64 @@ def test_el_nombre_del_sujeto_no_es_una_coletilla():
         "The 10y-2y Treasury spread was +0.52 pp a month ago.",
         ["A year ago the 10y-2y Treasury spread was +0.54 pp."],
         vocabulario_del_sujeto(b)) == []
+
+
+# --- IPC: inflación interanual, no el nivel del índice ----------------------
+
+def _indice_mensual(anios=8, subida_anual=0.03, base=250.0):
+    """Un IPC que sube parejo, un 3% al año."""
+    out, v = [], base
+    for i in range(anios * 12):
+        y, m = 2019 + i // 12, 1 + i % 12
+        out.append((f"{y}-{m:02d}-01", round(v, 3)))
+        v *= (1 + subida_anual) ** (1 / 12)
+    return out
+
+
+def test_la_interanual_compara_el_mismo_mes_del_ano_anterior():
+    from xcreator.macro import interanual
+
+    s = interanual(_indice_mensual())
+    assert all(abs(v - 3.0) < 0.05 for _, v in s), s[:3]
+
+
+def test_la_interanual_se_queda_con_cinco_anos():
+    """Sin recortar, 400 observaciones mensuales son 33 años de "rango"."""
+    from xcreator.macro import MESES_INTERANUAL, interanual
+
+    assert len(interanual(_indice_mensual(anios=20))) == MESES_INTERANUAL
+
+
+def test_un_indice_que_sube_parejo_no_es_un_extremo():
+    """El IPC en nivel casi siempre está en máximos, así que el puntuador lo
+    leía como un extremo permanente. En interanual, un 3% constante es plano."""
+    from xcreator.macro import SERIES, interanual, leer
+
+    cfg = SERIES["inflacion"]
+    crudo = _indice_mensual()
+    assert leer(cfg, crudo).tension >= 1, "en nivel parecía un extremo"
+    assert leer(cfg, interanual(crudo)).tension == 0
+
+
+def test_el_ipc_se_publica_como_porcentaje_interanual():
+    from xcreator.macro import SERIES, brief_macro, interanual, leer
+
+    cfg = SERIES["inflacion"]
+    assert cfg.interanual and cfg.unidad == "pct"
+    serie = interanual(_indice_mensual(subida_anual=0.035))
+    b = brief_macro(leer(cfg, serie))
+    assert b.facts[0].unit == "pct_val"
+    assert b.facts[0].rendered().endswith("%") and "year over year" in b.facts[0].label
+
+
+def test_nadie_pide_una_serie_macro_por_fuera_de_serie_de():
+    """Si la transformación viviera en un solo sitio, los otros seguirían
+    leyendo el índice en nivel."""
+    import re
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "xcreator"
+    for f in raiz.glob("*.py"):
+        for n, linea in enumerate(f.read_text().splitlines(), 1):
+            if re.search(r"fred_series\(cfg\.serie", linea):
+                assert f.name == "macro.py", f"{f.name}:{n}"

@@ -1165,7 +1165,9 @@ def _grafico_macro(brief, settings, destino, firma):
                None)
     if cfg is None:
         return None
-    serie = fred_series(cfg.serie, settings.fred_api_key)
+    from xcreator.macro import serie_de
+
+    serie = serie_de(cfg, settings.fred_api_key)
     ano = _valor(brief, f"{cfg.nombre} hace un año")
     mes = _valor(brief, f"{cfg.nombre} hace un mes")
     u = {"pct": "%", "pp": " pp"}.get(cfg.unidad, "")

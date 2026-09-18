@@ -34,6 +34,9 @@ class SerieMacro:
     # texto" y gatillo a "de qué habla el suyo". Mezclarlos deja entrar por la
     # puerta del sujeto frases que no nombran nada.
     gatillos: tuple[str, ...] = ()
+    # Si la serie es un ÍNDICE que se publica en nivel (el IPC), se convierte
+    # en variación interanual antes de todo lo demás. Ver `interanual()`.
+    interanual: bool = False
 
 
 # Catálogo deliberadamente corto: series que mueven la conversación de
@@ -57,11 +60,16 @@ SERIES: dict[str, SerieMacro] = {
         gatillos=("unemployment", "jobless", "payroll", "labor market",
                   "labour market", "jobs report")),
     "inflacion": SerieMacro(
-        "CPIAUCSL", "CPI", "count",
+        # El IPC se publica como un ÍNDICE (334, 333, 323...). Nadie habla de
+        # su nivel: se habla de la inflación interanual. Y el nivel casi
+        # siempre sube, así que estaba siempre "en máximos" y el puntuador lo
+        # leía como un extremo permanente. Se trabaja con la interanual.
+        "CPIAUCSL", "CPI inflation, year over year", "pct",
         "Is disinflation still happening, or did it stall?",
         alias=("cpi", "inflation", "consumer price", "disinflation"),
         gatillos=("inflation", "cpi", "consumer price", "disinflation",
-                  "price pressure")),
+                  "price pressure"),
+        interanual=True),
     "hipoteca": SerieMacro(
         "MORTGAGE30US", "the 30-year mortgage rate", "pct",
         "What does this do to housing-linked demand?",
@@ -151,6 +159,42 @@ def _cerca_de(serie: list[tuple[str, float]], dias: int) -> float | None:
     return previos[-1] if previos else None
 
 
+# Cinco años de interanuales: el mismo horizonte que el resto de la lectura
+# llama "5a". Sin recortar, 400 observaciones mensuales son 33 años y el
+# "rango" del IPC incluiría los 90.
+MESES_INTERANUAL = 60
+
+
+def interanual(serie: list[tuple[str, float]],
+               meses: int = MESES_INTERANUAL) -> list[tuple[str, float]]:
+    """Índice mensual -> variación interanual en %, los últimos `meses`.
+
+    Cada punto se compara con el MISMO mes del año anterior, no con "hace 365
+    días": el IPC se publica con fecha de primero de mes y así no hay que
+    adivinar qué observación cae más cerca.
+    """
+    por_mes = {(int(f[:4]), int(f[5:7])): v for f, v in serie}
+    out = []
+    for f, v in serie:
+        antes = por_mes.get((int(f[:4]) - 1, int(f[5:7])))
+        if antes:
+            out.append((f, round((v / antes - 1) * 100, 2)))
+    return out[-meses:]
+
+
+def serie_de(cfg: SerieMacro, api_key: str | None) -> list[tuple[str, float]]:
+    """La serie tal como hay que leerla. ÚNICO punto de entrada.
+
+    El puntuador, los replies y el gráfico la pedían cada uno por su lado a
+    FRED. Si la transformación del IPC viviera solo en uno, los otros seguirían
+    leyendo el índice en nivel.
+    """
+    from xcreator.datos import fred_series
+
+    serie = fred_series(cfg.serie, api_key)
+    return interanual(serie) if cfg.interanual else serie
+
+
 def leer(cfg: SerieMacro, serie: list[tuple[str, float]]) -> Lectura | None:
     """Convierte la serie cruda en un dato con contexto. None si no alcanza."""
     if len(serie) < 20:
@@ -219,7 +263,7 @@ def mejores_temas(api_key: str | None, *, minimo: float = 1.0) -> list[Lectura]:
 
     lecturas = []
     for cfg in SERIES.values():
-        l = leer(cfg, fred_series(cfg.serie, api_key))
+        l = leer(cfg, serie_de(cfg, api_key))
         if l is not None and l.tension >= minimo:
             lecturas.append(l)
     return sorted(lecturas, key=lambda l: l.tension, reverse=True)
@@ -251,5 +295,5 @@ def brief_para_post(texto: str, api_key: str | None) -> Brief | None:
     cfg = serie_para_post(texto)
     if cfg is None:
         return None
-    lec = leer(cfg, fred_series(cfg.serie, api_key))
+    lec = leer(cfg, serie_de(cfg, api_key))
     return brief_macro(lec) if lec is not None else None
