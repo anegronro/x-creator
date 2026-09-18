@@ -436,7 +436,12 @@ def _redactar_regulacion(q, s, *, encolar: bool) -> None:
         candidatos += [Titular(cuenta.handle, p.texto, p.url, p.post_id,
                                edad_horas(p.post_id)) for p in posts]
 
-    titular = elegir_titular(candidatos, q.fuentes_usadas())
+    # Ni un titular ya usado, ni uno que ya se respondió o se citó: dos posts
+    # del perfil sobre la misma noticia se leen como relleno.
+    tocados = q.fuentes_usadas() | {
+        (i.url_origen or "").rstrip("/").split("/")[-1]
+        for i in q.load() if i.kind in ("reply", "cita") and i.url_origen}
+    titular = elegir_titular(candidatos, tocados)
     typer.echo(f"{len(candidatos)} posts leídos de "
                f"{', '.join(c.handle for c in fuentes)}. "
                f"Gasto: ${cliente.gastado:.3f}")
@@ -704,6 +709,9 @@ def citar(
     # post se lee como spam.
     excluir = {(i.url_origen or "").rstrip("/").split("/")[-1]
                for i in q.load() if i.kind in ("reply", "cita") and i.url_origen}
+    # Y tampoco el titular que ya usó un post propio de regulación: saldrían
+    # dos posts en el perfil sobre la misma noticia.
+    excluir |= q.fuentes_usadas()
     post, rel = elegir_para_citar(posts, relevancia_de, excluir)
     typer.echo(f"{len(posts)} posts leídos de {len(cuentas)} cuentas. "
                f"Gasto: ${cliente.gastado:.3f}")

@@ -3705,3 +3705,14 @@ def test_la_cita_llega_con_instrucciones_de_citar_no_de_responder(tmp_path):
     txt = mensaje_para_copiar(q.get(i.id))
     assert "CITAR" in txt and "<b>Citar</b>" in txt
     assert "<pre>The Fed guided it there.</pre>" in txt
+
+
+def test_la_cita_y_el_post_de_regulacion_no_usan_el_mismo_titular():
+    """Saldrían dos posts del perfil sobre la misma noticia."""
+    import inspect
+
+    from xcreator.cli import _redactar_regulacion, citar
+
+    assert "fuentes_usadas()" in inspect.getsource(citar)
+    reg = inspect.getsource(_redactar_regulacion)
+    assert '"cita"' in reg and "fuentes_usadas()" in reg
