@@ -3176,3 +3176,95 @@ def test_ningun_endpoint_legacy_de_fmp_en_el_codigo():
             codigo = linea.split("#", 1)[0]
             assert not re.search(r"financialmodelingprep\.com/api/v3", codigo), \
                 f"{f.name}:{n} usa un endpoint legacy de FMP"
+
+
+# --- regulación de cripto: criterio anclado a un titular real --------------
+
+def _titular(texto, horas=1.0, pid="1"):
+    from xcreator.regulacion import Titular
+    return Titular("@WatcherGuru", texto, f"https://x.com/WatcherGuru/status/{pid}",
+                   pid, horas)
+
+
+def test_elige_el_titular_de_regulacion_mas_fresco():
+    from xcreator.regulacion import elegir_titular
+
+    t = elegir_titular([
+        _titular("JUST IN: Senate to discuss the Crypto Clarity Act", 5.0, "a"),
+        _titular("JUST IN: US House unveils new crypto tax legislation", 1.0, "b"),
+        _titular("JUST IN: Bitcoin falls under $77,000", 0.5, "c"),   # no es regulación
+    ], usados=set())
+    assert t.post_id == "b"
+
+
+def test_no_repite_un_titular_ya_usado_ni_uno_viejo():
+    from xcreator.regulacion import HORAS_MAX_TITULAR, elegir_titular
+
+    assert elegir_titular([_titular("Crypto Clarity Act vote", 1.0, "a")],
+                          usados={"a"}) is None
+    assert elegir_titular([_titular("Crypto Clarity Act vote",
+                                    HORAS_MAX_TITULAR + 1, "a")],
+                          usados=set()) is None
+
+
+def test_el_brief_no_deja_inventar_la_noticia():
+    """Sin fuente de hechos, un post propio sobre regulación inventaría la
+    noticia. El titular la aporta; el brief prohíbe ir más allá."""
+    from xcreator.regulacion import brief_regulacion
+
+    b = brief_regulacion(_titular(
+        "JUST IN: 🇺🇸 Democrats reject Republican crypto Clarity Act draft bill"),
+        None)
+    ctx = " ".join(b.context).lower()
+    assert "sin verificar" in ctx
+    assert "no afirmes nada que el titular no diga" in ctx
+    assert "reportedly" in ctx
+    assert "just in" not in b.context[0].lower(), "se limpia el titular"
+    assert "clarity act" in b.sujeto
+
+
+def test_las_cifras_del_titular_son_citables_y_nada_mas():
+    from xcreator.regulacion import brief_regulacion
+
+    b = brief_regulacion(_titular("Crypto tax bill caps rate at 15%"), None)
+    assert 15.0 in b.allowed_numbers()
+
+
+def test_nombrar_partidos_no_publica_solo():
+    """No se prohíbe —a veces la noticia no se explica sin decir quién la
+    bloquea—, pero una cuenta de mercados no toma partido en automático."""
+    from xcreator.regulacion import menciona_partidismo
+    from xcreator.store import Queue
+
+    assert menciona_partidismo("Democrats reject the bill") == ["democrats"]
+    assert menciona_partidismo("The Senate delays the Clarity Act") == []
+
+
+def test_el_borrador_partidista_espera_a_angel(tmp_path):
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("The Clarity Act stalls because Democrats want more.",
+                     ticker="", kind="regulacion", partidismo=["democrats"]),
+              estado="programado")
+    assert q.get(i.id).estado == "pendiente"
+
+
+def test_la_fuente_NO_va_en_url_origen(tmp_path):
+    """url_origen es de los replies: el publicador bloquea todo lo que lo
+    tenga con más de 12 horas. Ahí habría vuelto impublicable el post."""
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("The Clarity Act is about jurisdiction.", ticker="",
+                     kind="regulacion",
+                     fuente="https://x.com/WatcherGuru/status/9"))
+    item = q.get(i.id)
+    assert item.fuente.endswith("/9") and item.url_origen == ""
+    assert "9" in q.fuentes_usadas()
+
+
+def test_regulacion_no_puede_atribuirse_llamadas():
+    from xcreator.generate import SIN_HISTORIAL
+
+    assert "regulacion" in SIN_HISTORIAL

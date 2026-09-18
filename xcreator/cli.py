@@ -124,6 +124,8 @@ def redactar(
         False, help="Post de mercado/economía, sin empresa concreta."),
     cripto: bool = typer.Option(
         False, help="Post de activos digitales (BTC, XRP, ETH, SOL)."),
+    regulacion: bool = typer.Option(
+        False, help="Post propio sobre un titular reciente de regulación de cripto."),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
     from xcreator.brief import load_briefs
@@ -139,6 +141,10 @@ def redactar(
 
     if cripto:
         _redactar_cripto(q, s, n=n, encolar=encolar)
+        return
+
+    if regulacion:
+        _redactar_regulacion(q, s, encolar=encolar)
         return
 
     lecciones = []
@@ -244,6 +250,14 @@ def _mostrar_y_encolar(d, brief, q, s, *, encolar: bool) -> None:
     if d.tickers_faltantes:
         typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
                     fg="red")
+    if getattr(d, "partidismo", None):
+        typer.secho(f"  NOMBRA PARTIDOS/POLÍTICOS {d.partidismo}: no sale solo",
+                    fg="yellow")
+    if getattr(d, "llamada_inventada", None):
+        typer.secho(f"  SE ATRIBUYE UNA LLAMADA QUE NO EXISTE: {d.llamada_inventada}",
+                    fg="red")
+    if getattr(d, "frases_repetidas", None):
+        typer.secho(f"  REPITE: {d.frases_repetidas[:3]}", fg="yellow")
     if encolar:
         # Nace PROGRAMADO: sale solo pasada la ventana de veto. Lo que antes
         # hacía falta para publicar (aprobar) ahora hace falta para parar, que
@@ -359,6 +373,63 @@ def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
     if drafts:
         _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
                            brief, q, s, encolar=encolar)
+
+
+def _redactar_regulacion(q, s, *, encolar: bool) -> None:
+    """Post propio anclado a un titular real de regulación de cripto."""
+    from xcreator.generate import draft_posts
+    from xcreator.publicar import edad_horas
+    from xcreator.regulacion import Titular, brief_regulacion, elegir_titular
+    from xcreator.watchlist import Watchlist
+    from xcreator.xapi import ClienteX, XAPIError
+
+    # Solo las cuentas de cripto: leer las ocho para buscar un titular de
+    # regulación costaría $0.40 por pasada a cambio de nada.
+    fuentes = [c for c in Watchlist.cargar(s.watchlist_path).activas()
+               if "cripto" in (c.tema or "").lower()]
+    if not fuentes:
+        typer.secho("Ninguna cuenta de la watchlist está marcada como de "
+                    "cripto (el tema tiene que decir 'cripto').", fg="yellow")
+        return
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+
+    candidatos: list[Titular] = []
+    for cuenta in fuentes:
+        try:
+            posts = cliente.posts_recientes(cuenta.handle, limite=15)
+        except XAPIError as e:
+            typer.secho(f"  {cuenta.handle}: {e}", fg="yellow")
+            continue
+        candidatos += [Titular(cuenta.handle, p.texto, p.url, p.post_id,
+                               edad_horas(p.post_id)) for p in posts]
+
+    titular = elegir_titular(candidatos, q.fuentes_usadas())
+    typer.echo(f"{len(candidatos)} posts leídos de "
+               f"{', '.join(c.handle for c in fuentes)}. "
+               f"Gasto: ${cliente.gastado:.3f}")
+    if titular is None:
+        typer.secho("Ningún titular de regulación fresco y sin usar. Mejor "
+                    "callar que inventarse la noticia.", fg="yellow")
+        return
+
+    typer.echo(f"Titular ({titular.horas:.1f}h, {titular.autor}): "
+               f"{titular.texto[:110]}\n")
+    brief = brief_regulacion(titular, s.fmp_api_key)
+    brief.fuente = titular.url
+
+    # Dos variantes y se queda una: la segunda es repuesto de la primera.
+    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+                    fg="red", err=True)
+        raise typer.Exit(1)
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
 
 
 def _analizar_cuenta(csv: Path) -> None:
@@ -500,6 +571,14 @@ def responder(
     if d.tickers_faltantes:
         typer.secho(f"  FALTA EL TICKER: {', '.join(d.tickers_faltantes)}",
                     fg="red")
+    if getattr(d, "partidismo", None):
+        typer.secho(f"  NOMBRA PARTIDOS/POLÍTICOS {d.partidismo}: no sale solo",
+                    fg="yellow")
+    if getattr(d, "llamada_inventada", None):
+        typer.secho(f"  SE ATRIBUYE UNA LLAMADA QUE NO EXISTE: {d.llamada_inventada}",
+                    fg="red")
+    if getattr(d, "frases_repetidas", None):
+        typer.secho(f"  REPITE: {d.frases_repetidas[:3]}", fg="yellow")
     if encolar:
         item = q.add(d)
         typer.echo(f"  -> cola id {item.id}")

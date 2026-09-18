@@ -28,7 +28,7 @@ MODEL = "claude-opus-5"
 MAX_CHARS = 280
 # Tipos de brief sin predicciones guardadas: ahí no hay llamada pasada que
 # citar, así que atribuirse una es inventarla.
-SIN_HISTORIAL = ("macro", "cripto")
+SIN_HISTORIAL = ("macro", "cripto", "regulacion")
 
 
 # --- Validación numérica (determinista, sin modelo) -----------------------
@@ -318,6 +318,12 @@ def frases_repetidas(texto: str, recientes: list[str]) -> list[str]:
     return sorted(halladas)
 
 
+def _partidismo(texto: str) -> list[str]:
+    from xcreator.regulacion import menciona_partidismo
+
+    return menciona_partidismo(texto)
+
+
 def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     """True si el post no dice de qué habla.
 
@@ -397,6 +403,11 @@ class Draft:
     cifras_mal: list[str] = field(default_factory=list)
     motivo: str = ""
     frases_repetidas: list[str] = field(default_factory=list)
+    # Nombres de partido o político en un post sin empresa. No se prohíbe,
+    # pero ese post no sale solo: espera a que Angel decida.
+    partidismo: list[str] = field(default_factory=list)
+    # El titular del que salió un post de regulación, para no repetirlo.
+    fuente: str = ""
 
     @property
     def valido(self) -> bool:
@@ -411,6 +422,7 @@ class Draft:
             and not self.usa_raya
             and not self.cifras_mal
             and not self.frases_repetidas
+            and not self.partidismo
         )
 
     @property
@@ -746,6 +758,9 @@ def draft_posts(
                 usa_raya=lleva_raya("\n".join(piezas)),
                 cifras_mal=cifras_mal_formateadas("\n".join(piezas)),
                 frases_repetidas=frases_repetidas("\n".join(piezas), recientes),
+                partidismo=(_partidismo("\n".join(piezas))
+                            if brief.kind in SIN_HISTORIAL else []),
+                fuente=getattr(brief, "fuente", ""),
             )
         )
     return drafts

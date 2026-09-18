@@ -57,6 +57,11 @@ class Item:
     # anteriores a que existiera: no penalizan nada, que es lo correcto.
     motivo: str = ""
     frases_repetidas: list[str] = field(default_factory=list)
+    partidismo: list[str] = field(default_factory=list)
+    # El titular de origen de un post propio. NO va en `url_origen`: ese campo
+    # es de los replies, y el publicador bloquea todo lo que tenga url_origen
+    # de más de 12 horas. Guardarlo ahí habría vuelto impublicable el post.
+    fuente: str = ""
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -138,6 +143,8 @@ class Queue:
             url_origen=getattr(draft, "url", ""),
             motivo=getattr(draft, "motivo", ""),
             frases_repetidas=list(getattr(draft, "frases_repetidas", [])),
+            partidismo=list(getattr(draft, "partidismo", [])),
+            fuente=getattr(draft, "fuente", ""),
         )
         items = self.load()
         items.append(item)
@@ -370,6 +377,14 @@ class Queue:
             if fecha and fecha > ultimo.get(t, ""):
                 ultimo[t] = fecha
         return ultimo
+
+    def fuentes_usadas(self) -> set[str]:
+        """Los ids de los titulares que ya dieron un post, rechazados incluidos.
+
+        Si se descartó, rehacerlo es gastar dos veces la misma mala idea.
+        """
+        return {i.fuente.rstrip("/").split("/")[-1]
+                for i in self.load() if getattr(i, "fuente", "")}
 
     def textos_recientes(self, n: int = 15) -> list[str]:
         """Los últimos `n` posts propios que salieron o van a salir.

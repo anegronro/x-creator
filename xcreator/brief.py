@@ -64,6 +64,10 @@ class Brief:
     # pone el ranking; viaja hasta la cola para que mañana se sepa qué
     # historia se contó hoy.
     motivo: str = ""
+    # De dónde salió el hecho, cuando no es un análisis propio: el titular
+    # ajeno en un post de regulación. Se guarda para no escribir dos veces
+    # del mismo, no se publica.
+    fuente: str = ""
 
     @property
     def brief_id(self) -> str:

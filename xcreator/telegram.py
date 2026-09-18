@@ -314,6 +314,9 @@ def _avisos_de(item) -> list[str]:
         avisos.append("LLEVA UNA RAYA")
     if getattr(item, "cifras_mal", None):
         avisos.append(f"CIFRAS MAL FORMATEADAS: {', '.join(item.cifras_mal)}")
+    if getattr(item, "partidismo", None):
+        avisos.append(f"NOMBRA PARTIDOS O POLÍTICOS ({', '.join(item.partidismo)}): "
+                      f"no sale solo, decides tú")
     if getattr(item, "frases_repetidas", None):
         avisos.append(f"REPITE FRASES DE POSTS RECIENTES: "
                       f"{', '.join(item.frases_repetidas[:3])}")
