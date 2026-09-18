@@ -638,3 +638,36 @@ def mix_de_alcance(posts: list[Post]) -> MixDeAlcance:
         mediana_propios=statistics.median(ip) if ip else 0.0,
         p_value=_mannwhitney(ir, ip),
     )
+
+
+def efecto_imagen(posts: list[Post], con_imagen: dict[str, bool],
+                  metric: str = "impressions") -> Finding:
+    """¿Rinde más un post del sistema con gráfica que sin ella?
+
+    Solo entran los posts que publicó el sistema (`con_imagen` viene de la
+    cola, indexado por post_id): son los únicos de los que se SABE si
+    llevaban imagen. El CSV de X no lo dice, y los posts manuales de Angel
+    también pueden llevar una; mezclarlos contaría como "sin imagen" posts
+    que sí la tenían.
+
+    Se construyó para comprobar una hipótesis y no para confirmarla: la idea
+    de que las gráficas suben el alcance salía de UN solo par (158 vistas con
+    gráfica contra 10 sin ella). Con MIN_GROUP por lado o no hay veredicto.
+    """
+    del_sistema = [p for p in posts if p.post_id in con_imagen]
+    con = [getattr(p, metric) for p in del_sistema if con_imagen[p.post_id]]
+    sin = [getattr(p, metric) for p in del_sistema if not con_imagen[p.post_id]]
+    med_con = statistics.median(con) if con else 0.0
+    med_sin = statistics.median(sin) if sin else 0.0
+    suficiente = len(con) >= MIN_GROUP and len(sin) >= MIN_GROUP
+    return Finding(
+        feature="tiene_grafica",
+        n_con=len(con),
+        n_sin=len(sin),
+        mediana_con=med_con,
+        mediana_sin=med_sin,
+        lift=(med_con - med_sin) / med_sin if med_sin > 0 else None,
+        p_value=_mannwhitney(con, sin) if suficiente else None,
+        suficiente=suficiente,
+        metric=metric,
+    )

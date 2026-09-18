@@ -3305,3 +3305,121 @@ def test_replies_y_posts_clasifican_igual_el_mismo_titular():
     t = "CFTC files new rulemaking to regulate crypto transactions"
     assert es_regulacion_cripto(t)
     assert _tema_sin_cifras(t) == "regulación de cripto"
+
+
+# --- la 3: gráficas pensadas para compartirse ------------------------------
+
+def _serie_lineal(n=120, desde=100.0, paso=0.5):
+    from datetime import date, timedelta
+    hoy = date(2026, 9, 18)
+    return [(str(hoy - timedelta(days=n - 1 - i)), desde + i * paso) for i in range(n)]
+
+
+def test_la_grafica_de_rango_se_genera_y_no_proyecta(tmp_path):
+    """Cripto y macro no tienen modelo: dibujar un futuro sería inventarlo."""
+    import inspect
+
+    from xcreator.graficos import grafico_rango
+
+    out = grafico_rango(_serie_lineal(), tmp_path / "r.png", titulo="Bitcoin · price",
+                        subtitulo="x", fuente="Data: FMP", firma="anegronro")
+    assert out and out.exists() and out.stat().st_size > 10_000
+    assert "fill_between" not in inspect.getsource(grafico_rango), \
+        "sin modelo no hay banda de proyección"
+
+
+def test_la_grafica_de_rango_pide_historico_suficiente(tmp_path):
+    from xcreator.graficos import grafico_rango
+
+    assert grafico_rango(_serie_lineal(n=5), tmp_path / "r.png", titulo="x",
+                         subtitulo="x", fuente="x") is None
+
+
+def test_ningun_titulo_de_grafica_lleva_raya():
+    """El título también es texto publicado: la regla vale igual."""
+    import inspect
+
+    import xcreator.cli as cli
+    import xcreator.graficos as g
+
+    for fuente in (inspect.getsource(g), inspect.getsource(cli._grafico_cripto),
+                   inspect.getsource(cli._grafico_macro)):
+        for linea in fuente.splitlines():
+            if "titulo=" in linea or "fig.text(0.065, 0.945" in linea:
+                assert "—" not in linea and "–" not in linea, linea
+
+
+def test_el_marcador_calcula_cuanto_quedo_fuera():
+    from xcreator.marcador import Fila
+
+    assert Fila("A", 90, 100, 150).fuera == -10.0     # 10% bajo el bear
+    assert Fila("B", 165, 100, 150).fuera == 10.0     # 10% sobre el bull
+    assert Fila("C", 120, 100, 150).fuera == 0.0      # dentro
+
+
+def test_el_marcador_ordena_por_lo_mas_lejos():
+    from xcreator.marcador import Fila, extremos
+
+    todas = [Fila("A", 99, 100, 150), Fila("B", 80, 100, 150),
+             Fila("C", 160, 100, 150), Fila("D", 120, 100, 150)]
+    abajo, arriba = extremos(todas)
+    assert [f.ticker for f in abajo] == ["B", "A"]
+    assert [f.ticker for f in arriba] == ["C"]
+
+
+def test_sin_nadie_fuera_no_hay_marcador():
+    """Un marcador vacío no se publica."""
+    from xcreator.marcador import brief_marcador
+
+    b = _brief_con(precio_hoy=250.0)       # dentro del rango del _PRED de prueba
+    assert brief_marcador([b]) is None
+
+
+def test_el_marcador_si_puede_hablar_del_modelo():
+    """Aquí las predicciones EXISTEN y están guardadas: no es historial
+    inventado, así que no entra en SIN_HISTORIAL."""
+    from xcreator.generate import SIN_HISTORIAL
+
+    assert "marcador" not in SIN_HISTORIAL
+
+
+def test_la_grafica_del_marcador_se_genera(tmp_path):
+    from xcreator.graficos import grafico_marcador
+    from xcreator.marcador import Fila
+
+    out = grafico_marcador([Fila("ATAT", 92, 100, 150)], [Fila("COIN", 153.6, 100, 150)],
+                           153, tmp_path / "m.png", firma="anegronro")
+    assert out and out.exists()
+
+
+def test_el_vigilante_no_pide_153_precios_por_pasada():
+    """Emparejar no necesita el precio: pedirlo de todas cada 15 minutos eran
+    unas 5,000 llamadas diarias a FMP."""
+    import inspect
+
+    from xcreator.cli import vigilar
+
+    src = inspect.getsource(vigilar)
+    assert "load_briefs(s.reportes_dir, None" in src
+    assert "con_precio(" in src
+
+
+def test_con_precio_no_toca_los_briefs_que_ya_traen_su_dato():
+    from xcreator.brief import Brief, con_precio
+
+    b = Brief(kind="macro", ticker="", angle="a")
+    assert con_precio(None, b, lambda t: 1 / 0) is b
+
+
+def test_el_efecto_imagen_solo_mira_posts_del_sistema():
+    """Los posts manuales de Angel también pueden llevar imagen y el CSV no lo
+    dice: contarlos como "sin imagen" falsearía la comparación."""
+    from xcreator.analytics import Post, efecto_imagen
+
+    def p(pid, imp):
+        return Post(pid, "t", None, imp, 0, 0, 0, 0, 0, 0)
+
+    posts = [p("a", 100), p("b", 200), p("manual", 9999)]
+    f = efecto_imagen(posts, {"a": True, "b": False})
+    assert f.n_con == 1 and f.n_sin == 1, "el manual no entra"
+    assert not f.suficiente, "con 1 por lado no hay veredicto"

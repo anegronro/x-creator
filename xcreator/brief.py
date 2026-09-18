@@ -238,3 +238,33 @@ def load_brief_file(path: Path) -> Brief:
         context=d.get("context", []),
         as_of=d.get("as_of", date.today().isoformat()),
     )
+
+
+def con_precio(reports_dir, brief: Brief, price_fn) -> Brief:
+    """El mismo brief, ahora con su precio de hoy. Para cuando solo hace falta
+    uno de los 153.
+
+    El vigilante pedía el precio de las 153 empresas cada 15 minutos para
+    luego responder, como mucho, sobre una o dos: unas 5,000 llamadas diarias
+    a FMP, a un ritmo que roza el límite por minuto del plan. Emparejar no
+    necesita el precio; redactar sí, y solo el de la empresa elegida.
+    """
+    from xcreator.datos import load_predictions
+
+    if brief.kind not in ("target_range", "thesis_check", "conviction"):
+        return brief                      # macro, cripto: ya traen su dato
+    ultima = None
+    for p in load_predictions(reports_dir):
+        if p["ticker"].upper() == brief.ticker.upper():
+            ultima = p
+    if ultima is None:
+        return brief
+    try:
+        precio = price_fn(brief.ticker)
+    except Exception:
+        precio = None
+    nuevo = from_prediction(ultima, precio)
+    if nuevo is None:
+        return brief
+    nuevo.angulo = brief.angulo
+    return nuevo

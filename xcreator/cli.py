@@ -24,7 +24,7 @@ def analizar(
 ) -> None:
     """Mide qué funciona en TU cuenta: patrones con n, efecto y p-value."""
     from xcreator.analytics import (
-        AnalyticsError, analyze, es_export_de_cuenta, load_posts,
+        MIN_GROUP, AnalyticsError, analyze, es_export_de_cuenta, load_posts,
     )
 
     # X exporta dos CSV distintos con el mismo botón y no lo avisa.
@@ -65,6 +65,23 @@ def analizar(
         marca = "*" if f.significativo else " "
         typer.echo(f" {marca} {f.feature:<16} {f.mediana_con:>7.3%} vs "
                    f"{f.mediana_sin:>7.3%}  {f.veredicto}")
+
+    # ¿Las gráficas suben el alcance? Solo se puede saber con los posts que
+    # publicó el sistema: la cola sabe cuáles llevaban imagen; el CSV no.
+    from xcreator.analytics import efecto_imagen
+
+    q_, _ = _queue()
+    con_imagen = {i.post_id: bool(i.imagen) for i in q_.load()
+                  if i.estado == "publicado" and i.post_id and i.kind != "reply"}
+    fi = efecto_imagen(posts, con_imagen)
+    typer.echo("\n--- ¿Las gráficas suben el alcance? (solo posts del sistema) ---")
+    typer.echo(f"   con gráfica  n={fi.n_con:<3} mediana {fi.mediana_con:>6,.0f} imp")
+    typer.echo(f"   sin gráfica  n={fi.n_sin:<3} mediana {fi.mediana_sin:>6,.0f} imp")
+    if fi.suficiente:
+        typer.echo(f"   p={fi.p_value:.3f}" if fi.p_value is not None else "   p=n/a")
+    else:
+        typer.secho(f"   Muestra insuficiente: hacen falta {MIN_GROUP} por lado. "
+                    f"No hay veredicto todavía.", fg="yellow")
 
     # El alcance es una pregunta distinta a la conversación: un link no cambia
     # tu reply RATE (es un ratio) pero sí puede hundir las impresiones.
@@ -126,6 +143,8 @@ def redactar(
         False, help="Post de activos digitales (BTC, XRP, ETH, SOL)."),
     regulacion: bool = typer.Option(
         False, help="Post propio sobre un titular reciente de regulación de cripto."),
+    marcador: bool = typer.Option(
+        False, help="Marcador semanal: qué acciones se salieron de su rango."),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
     from xcreator.brief import load_briefs
@@ -145,6 +164,10 @@ def redactar(
 
     if regulacion:
         _redactar_regulacion(q, s, encolar=encolar)
+        return
+
+    if marcador:
+        _redactar_marcador(q, s, encolar=encolar)
         return
 
     lecciones = []
@@ -432,6 +455,36 @@ def _redactar_regulacion(q, s, *, encolar: bool) -> None:
                        brief, q, s, encolar=encolar)
 
 
+def _redactar_marcador(q, s, *, encolar: bool) -> None:
+    """El marcador semanal: una imagen para compartir y un post que la abre."""
+    from xcreator.brief import load_briefs
+    from xcreator.datos import live_price
+    from xcreator.generate import draft_posts
+    from xcreator.marcador import brief_marcador, extremos, filas
+
+    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+                         limit=500)
+    brief = brief_marcador(briefs)
+    if brief is None:
+        typer.secho("Ninguna acción está fuera de su rango: un marcador vacío "
+                    "no se publica.", fg="yellow")
+        return
+    todas = filas(briefs)
+    abajo, arriba = extremos(todas)
+    # La gráfica necesita las filas, que no caben en `facts` sin perder el
+    # orden: viajan pegadas al brief solo durante esta corrida.
+    brief._marcador = (abajo, arriba, len(todas))
+    typer.echo(f"Marcador: {len(todas)} con precio y rango, "
+               f"{len(abajo)} por debajo y {len(arriba)} por encima.\n")
+    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+                    fg="red", err=True)
+        raise typer.Exit(1)
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
+
+
 def _analizar_cuenta(csv: Path) -> None:
     """Salud de la cuenta desde el overview diario (sin texto de posts)."""
     from xcreator.analytics import (
@@ -676,7 +729,7 @@ def vigilar(
                    f"ninguna cuenta en esta pasada: gasto $0.000.")
         return
 
-    briefs = load_briefs(s.reportes_dir, lambda t: live_price(t, s.fmp_api_key),
+    briefs = load_briefs(s.reportes_dir, None,  # sin precio: emparejar no lo necesita
                          limit=500)
     nombres = load_company_names(s.reportes_dir)
     typer.echo(f"{len(briefs)} briefs y {len(nombres)} nombres de empresa "
@@ -714,6 +767,15 @@ def vigilar(
 
     def _redactar_y_encolar(cuenta, m, rel) -> int:
         """Redacta el reply y lo deja en la cola. Devuelve 1 si se encoló."""
+        # El precio de hoy se pide AQUÍ, solo para la empresa elegida, y no
+        # al cargar los 153 briefs en cada pasada.
+        if rel.brief is not None:
+            from xcreator.brief import con_precio
+
+            angulo = rel.brief.angulo
+            rel.brief = con_precio(s.reportes_dir, rel.brief,
+                                   lambda t: live_price(t, s.fmp_api_key))
+            rel.brief.angulo = angulo
         d = draft_reply(m, rel, s)
         if d.declinado:
             typer.echo(f"  {cuenta.handle}: declinado — {d.motivo}")
@@ -1031,15 +1093,86 @@ def _grafico_para(brief, settings, item_id: str):
     from xcreator.datos import price_history
     from xcreator.graficos import grafico_escenarios, puede_graficar
 
-    if not puede_graficar(brief):
-        return None
+    destino = settings.root / "Contenido" / "graficos" / f"{item_id}.png"
+    firma = settings.x_handle or ""
     try:
-        historico = price_history(brief.ticker, settings.fmp_api_key, dias=180)
-        destino = settings.root / "Contenido" / "graficos" / f"{item_id}.png"
-        return grafico_escenarios(brief, historico, destino)
+        if puede_graficar(brief):
+            historico = price_history(brief.ticker, settings.fmp_api_key, dias=180)
+            return grafico_escenarios(brief, historico, destino, firma=firma)
+        # Cripto y macro salían sin imagen. Una gráfica es lo que más se
+        # comparte y compartir es lo que más pesa: cada tipo lleva la suya.
+        if brief.kind in ("cripto", "regulacion") and brief.ticker:
+            return _grafico_cripto(brief, settings, destino, firma)
+        if brief.kind == "macro":
+            return _grafico_macro(brief, settings, destino, firma)
+        if brief.kind == "marcador" and getattr(brief, "_marcador", None):
+            abajo, arriba, total = brief._marcador
+            from xcreator.graficos import grafico_marcador
+
+            return grafico_marcador(abajo, arriba, total, destino, firma=firma)
     except Exception as e:  # noqa: BLE001 - el gráfico es opcional
         typer.secho(f"  (sin gráfico: {type(e).__name__})", fg="yellow")
+    return None
+
+
+def _valor(brief, empieza: str):
+    return next((f.value for f in brief.facts if f.label.startswith(empieza)),
+                None)
+
+
+def _grafico_cripto(brief, settings, destino, firma):
+    from xcreator.cripto import DIAS_HISTORICO, activo_por_ticker
+    from xcreator.datos import price_history
+    from xcreator.graficos import grafico_rango
+
+    cfg = activo_por_ticker(brief.ticker)
+    if cfg is None:
         return None
+    serie = price_history(cfg.simbolo, settings.fmp_api_key, dias=DIAS_HISTORICO)
+    caida = _valor(brief, f"caída de {cfg.nombre}")
+    vol = _valor(brief, f"volatilidad anualizada de {cfg.nombre}")
+    partes = []
+    if caida is not None:
+        partes.append(f"{caida:.0f}% below its high")
+    if vol is not None:
+        partes.append(f"annualized volatility {vol:.0f}%")
+    return grafico_rango(
+        # "XRP (XRP)" repetía: solo se añade el ticker cuando aporta algo.
+        serie, destino,
+        titulo=(f"{cfg.nombre} ({cfg.ticker})" if cfg.nombre != cfg.ticker
+                else cfg.nombre) + " · price vs its range",
+        subtitulo="   ".join(partes),
+        fuente="Data: FMP daily closes. Descriptive range, not a forecast.",
+        firma=firma)
+
+
+def _grafico_macro(brief, settings, destino, firma):
+    from xcreator.datos import fred_series
+    from xcreator.graficos import grafico_rango
+    from xcreator.macro import SERIES
+
+    # El brief no guarda el id de FRED, pero sí su sujeto, que es el `alias`
+    # de su serie: con eso se encuentra sin añadir otro campo.
+    cfg = next((c for c in SERIES.values() if c.alias == tuple(brief.sujeto)),
+               None)
+    if cfg is None:
+        return None
+    serie = fred_series(cfg.serie, settings.fred_api_key)
+    ano = _valor(brief, f"{cfg.nombre} hace un año")
+    mes = _valor(brief, f"{cfg.nombre} hace un mes")
+    u = "%" if cfg.unidad == "pct" else ""
+    partes = []
+    if ano is not None:
+        partes.append(f"a year ago {ano:.2f}{u}")
+    if mes is not None:
+        partes.append(f"a month ago {mes:.2f}{u}")
+    nombre = cfg.nombre[0].upper() + cfg.nombre[1:]
+    return grafico_rango(
+        serie, destino, titulo=f"{nombre} · where it sits in its range",
+        subtitulo="   ".join(partes),
+        formato={"pct": "pct"}.get(cfg.unidad, "num"),
+        fuente=f"Data: FRED {cfg.serie}. Observed values, not a forecast.",
+        firma=firma)
 
 
 @app.command("cola")
