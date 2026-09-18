@@ -45,12 +45,26 @@ def live_price(ticker: str, api_key: str | None, *, timeout: float = 10.0
     if not api_key:
         return None
     try:
+        # /api/v3/quote-short está retirado: responde 403 "Legacy Endpoint".
+        # Durante días devolvió None para los 153 tickers y nadie lo vio,
+        # porque el except de abajo lo tragaba: ningún brief llevó "precio
+        # hoy", y las tres historias que dependen de él (romper el rango por
+        # abajo, por arriba y el movimiento) no dispararon nunca. El
+        # puntuador se quedó con dos historias y por eso se repetía.
         r = httpx.get(
-            f"https://financialmodelingprep.com/api/v3/quote-short/{ticker}",
-            params={"apikey": api_key}, timeout=timeout,
+            "https://financialmodelingprep.com/stable/quote-short",
+            params={"symbol": ticker, "apikey": api_key}, timeout=timeout,
         )
         r.raise_for_status()
         data = r.json()
+    except httpx.HTTPStatusError as e:
+        # Un 4xx no es "no hay precio": es que la llamada está mal. Se avisa
+        # por stderr para que salga en el log del cron en vez de desaparecer.
+        import sys
+
+        print(f"live_price {ticker}: HTTP {e.response.status_code}",
+              file=sys.stderr)
+        return None
     except (httpx.HTTPError, ValueError):
         return None
     if isinstance(data, list) and data and isinstance(data[0], dict):

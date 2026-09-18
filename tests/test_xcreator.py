@@ -3140,3 +3140,39 @@ def test_los_recientes_incluyen_lo_programado(tmp_path):
     q.add(_draft("$NVDA uno. NVDA.", ticker="NVDA"), estado="programado")
     q.add(_draft("$AMD dos. AMD.", ticker="AMD"))                 # pendiente
     assert q.textos_recientes() == ["$NVDA uno. NVDA."]
+
+
+def test_live_price_usa_el_endpoint_vivo_de_fmp(monkeypatch):
+    """/api/v3/quote-short responde 403 "Legacy Endpoint". live_price lo usaba
+    y devolvía None para los 153 tickers: ningún brief llevó "precio hoy" y
+    tres de las historias del puntuador no dispararon nunca."""
+    import xcreator.datos as D
+
+    llamadas = []
+
+    class _R:
+        def raise_for_status(self): pass
+        def json(self): return [{"symbol": "NVDA", "price": 219.56}]
+
+    def fake_get(url, params=None, timeout=None):
+        llamadas.append((url, params))
+        return _R()
+
+    monkeypatch.setattr(D.httpx, "get", fake_get)
+    assert D.live_price("NVDA", "k") == 219.56
+    url, params = llamadas[0]
+    assert "/stable/quote-short" in url and "/api/v3" not in url
+    assert params["symbol"] == "NVDA"
+
+
+def test_ningun_endpoint_legacy_de_fmp_en_el_codigo():
+    """El mismo retiro ya había roto price_history. Dos veces es un patrón."""
+    import re
+    from pathlib import Path
+
+    raiz = Path(__file__).resolve().parents[1] / "xcreator"
+    for f in raiz.glob("*.py"):
+        for n, linea in enumerate(f.read_text().splitlines(), 1):
+            codigo = linea.split("#", 1)[0]
+            assert not re.search(r"financialmodelingprep\.com/api/v3", codigo), \
+                f"{f.name}:{n} usa un endpoint legacy de FMP"
