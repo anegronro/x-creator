@@ -30,7 +30,8 @@ class Settings:
     # puesta, redacta Grok; sin ella, se cae a Claude si hay clave.
     xai_api_key: str | None = None
     xai_modelo: str = "grok-4.6"
-    # "xai" o "anthropic". Vacío = xai si hay XAI_API_KEY, si no anthropic.
+    # "xai" o "anthropic". Vacío = xai, SIEMPRE. Anthropic solo se usa si se
+    # pide explícitamente con LLM_PROVEEDOR=anthropic.
     llm_proveedor: str = ""
     # Fuentes de datos de mercado (solo lectura). Nada de ejecución.
     fmp_api_key: str | None = None
@@ -191,10 +192,14 @@ def anthropic_client(settings: Settings):
 
 
 def proveedor(settings: Settings) -> str:
-    """Qué modelo redacta: el elegido a mano, o xAI si hay clave."""
-    if settings.llm_proveedor in ("xai", "anthropic"):
-        return settings.llm_proveedor
-    return "xai" if settings.xai_api_key else "anthropic"
+    """Qué modelo redacta: xAI, salvo que se pida Anthropic a mano.
+
+    Sin caída automática a Anthropic. Angel decidió el 2026-09-21 que el
+    agente no llame a Anthropic: si falta la clave de xAI, el agente se
+    queda sin redactar y lo dice, en vez de gastar en otro proveedor sin
+    que nadie lo haya pedido.
+    """
+    return "anthropic" if settings.llm_proveedor == "anthropic" else "xai"
 
 
 def llm_client(settings: Settings):

@@ -3818,10 +3818,13 @@ def test_xai_error_http_no_se_traga():
         c.messages.create(messages=[{"role": "user", "content": "x"}])
 
 
-def test_proveedor_por_defecto_es_xai_si_hay_clave():
-    from xcreator.config import Settings, proveedor
+def test_nunca_cae_a_anthropic_sin_pedirlo():
+    from xcreator.config import Settings, llm_client, proveedor
 
     assert proveedor(Settings(xai_api_key="k", anthropic_api_key="a")) == "xai"
-    assert proveedor(Settings(anthropic_api_key="a")) == "anthropic"
-    assert proveedor(Settings(xai_api_key="k", llm_proveedor="anthropic")) \
-        == "anthropic"
+    # Sin clave de xAI NO se usa Anthropic aunque su clave exista: no hay
+    # cliente y el agente no redacta.
+    solo_anthropic = Settings(anthropic_api_key="a")
+    assert proveedor(solo_anthropic) == "xai"
+    assert llm_client(solo_anthropic) is None
+    assert proveedor(Settings(llm_proveedor="anthropic")) == "anthropic"
