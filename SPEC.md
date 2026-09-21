@@ -522,7 +522,8 @@ Forzar una respuesta ahí es lo que convierte esto en spam.
 | Constante | Valor | Por qué |
 |---|---|---|
 | Ventana de veto | 45 min | tiempo para vetar desde el teléfono antes de que salga |
-| Espaciado entre posts | 90 min | una tanda seguida se lee como bot |
+| Espaciado entre posts | 45 min (90 hasta el 2026-09-21) | con 16 posts al día no cabían más; una tanda seguida se lee como bot |
+| Holgura del espaciado | 2 min | sin ella el turno se perdía por segundos y el espaciado real era el doble |
 | Ventana horaria | 12:00 a 23:00 UTC | horario activo de la audiencia |
 | Rechazos antes de bloquear | 3 | ver sección 16, fallo 15 |
 
@@ -614,13 +615,13 @@ Todo en un VPS pequeño con cron. Horario en UTC (el usuario está en UTC-4).
 | Hora UTC | Tarea |
 |---|---|
 | cada 5 min | cola de Telegram (enviar y procesar toques) |
-| 11:30 L-V | redactar posts de empresa del día |
-| cada 30 min, 12 a 23 | publicar el siguiente de la cola |
+| 11:30 L-V | redactar 10 posts de empresa del día |
+| cada 15 min, 12 a 23 | publicar el siguiente de la cola |
 | cada 15 min, 13 a 21 L-V | vigilar cuentas y proponer replies |
-| 15:00 diario | post de cripto |
-| 17:00 L-V | post de macro |
+| 15:00 y 21:00 diario | post de cripto (otro activo en el segundo turno) |
+| 14:00 y 17:00 L-V | post de macro (otra serie en el segundo turno) |
 | 17:30 diario | elegir la cita del día |
-| 19:00 diario | post de regulación |
+| 16:00 y 19:00 diario | post de regulación (otro titular) |
 | 20:30 viernes | marcador semanal |
 
 **`flock` por tarea, obligatorio.** El intervalo del cron no es un límite de
