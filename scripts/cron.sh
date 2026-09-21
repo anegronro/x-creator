@@ -106,6 +106,19 @@ case "${1:-}" in
     # Corre también el fin de semana: las entrevistas y declaraciones siguen.
     salida=$("$XC" redactar --regulacion 2>&1); codigo=$?
     registrar "regulacion: $(echo "$salida" | grep -v '^live_price' | tail -4)"
+    # Sin comunicado oficial de cripto (la mayoría de los días) el turno no
+    # se pierde: Angel pidió el DOBLE de posts, y un hueco fijo lo dejaba en
+    # 14 en vez de 16. Entre semana se rellena con otra empresa (el ranking
+    # ya excluye las de los últimos 7 días); el fin de semana, con otro
+    # activo digital, porque la bolsa está cerrada.
+    if echo "$salida" | grep -q "Ningún comunicado oficial"; then
+      if [ "$(date -u +%u)" -le 5 ]; then
+        relleno=$("$XC" redactar --auto --n 1 2>&1); codigo=$?
+      else
+        relleno=$("$XC" redactar --cripto --n 2 2>&1); codigo=$?
+      fi
+      registrar "regulacion (relleno): $(echo "$relleno" | grep -v '^live_price' | tail -4)"
+    fi
     exit $codigo
     ;;
   marcador)
