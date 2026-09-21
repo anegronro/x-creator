@@ -64,6 +64,24 @@ Reglas que salen de ahí:
   mensaje "Posts are limited to a maximum of one cashtag ($SYMBOL)". El
   segundo `$TICKER` hace fallar el post entero.
 
+### 2.1b Autorización para publicar (OAuth 2.0)
+
+La app de X tiene que ser **Native App** (cliente público): OAuth 2.0 con
+PKCE, sin Client Secret. Como **Web App** exige el secreto en cada
+renovación, y el 21 de septiembre de 2026 ese cambio de tipo tumbó la
+publicación con `401 unauthorized_client: Missing valid authorization
+header`. El callback registrado tiene que coincidir letra por letra con el
+que usa el agente (`http://127.0.0.1:8788/callback`); `localhost` no vale
+como sustituto.
+
+La sesión dura 2 horas y se renueva sola con el refresh token. Solo UNA
+máquina debe renovarla (el VPS): si otra también renueva, el refresh token
+rota y deja a la primera sin sesión.
+
+Diagnóstico sin molestar al usuario: POST al token endpoint con un código
+falso. `400 invalid_request` = la app está bien configurada; `401
+unauthorized_client` = tipo de app o secreto mal.
+
 ### 2.2 Lo que la API NO permite
 
 **No se pueden publicar replies ni quotes por API** con los permisos
