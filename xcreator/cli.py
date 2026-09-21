@@ -370,6 +370,13 @@ def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
         except ValueError:
             return 10_000
 
+    # Con dos posts de cripto al día, el mismo activo dos veces el mismo día
+    # nunca: si solo uno tiene algo que contar, el segundo turno se calla.
+    temas = [t for t in temas if _dias(t) > 0]
+    if not temas:
+        typer.secho("El único activo con algo que contar ya salió hoy.",
+                    fg="yellow")
+        return
     frescos = [t for t in temas if _dias(t) >= VENTANA_DESCANSO]
     lectura = frescos[0] if frescos else max(temas, key=_dias)
     # El bono a 10 años como contexto: es el único argumento cruzado que casi
@@ -1099,9 +1106,17 @@ def publicar(
 
     if espaciado == 0 and not item_id:
         espaciado = ESPACIADO_MINUTOS
-    if espaciado and not item_id and not any(i.kind == "reply" for i in items):
+    # Antes: si en la lista había CUALQUIER reply, el espaciado se saltaba
+    # entero. Los replies aprobados no se pueden publicar por API (la
+    # revisión los bloquea), pero su sola presencia dejaba salir posts
+    # propios cada 30 minutos: 13:30, 14:00 y 14:30 el 18 de septiembre.
+    # El espaciado mira solo si hay posts PROPIOS esperando.
+    from xcreator.store import HOLGURA_MINUTOS
+
+    propios = [i for i in items if i.kind not in ("reply", "cita")]
+    if espaciado and not item_id and propios:
         desde = q.minutos_desde_ultima_publicacion()
-        if desde is not None and desde < espaciado:
+        if desde is not None and desde < espaciado - HOLGURA_MINUTOS:
             typer.echo(f"Toca esperar: el último post propio salió hace "
                        f"{desde:.0f} min y el espaciado es de {espaciado} min.")
             return
@@ -1190,7 +1205,20 @@ def _redactar_macro(q, s, *, n: int, encolar: bool) -> None:
                     "en su media no es un post.", fg="yellow")
         return
 
-    lectura = temas[0]
+    # Dos posts de macro al día desde el 2026-09-21. El segundo coge la
+    # siguiente serie con tensión, nunca la misma: tres posts del mismo dato
+    # en un día ya pasaron una vez. Si no queda otra serie, se calla.
+    from datetime import date
+
+    hoy = date.today().isoformat()
+    usadas = {i.motivo for i in q.load()
+              if i.kind == "macro" and (i.creado or "")[:10] == hoy}
+    frescas = [t for t in temas if f"macro:{t.cfg.serie}" not in usadas]
+    if not frescas:
+        typer.secho("Las series macro con algo que contar ya salieron hoy.",
+                    fg="yellow")
+        return
+    lectura = frescas[0]
     brief = brief_macro(lectura)
     typer.echo(f"Macro: {lectura.cfg.serie} — {lectura.valor:.2f} "
                f"(percentil {lectura.percentil_5a:.0%}, "

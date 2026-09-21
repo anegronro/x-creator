@@ -236,6 +236,9 @@ def brief_macro(lectura: Lectura) -> Brief:
     return Brief(
         kind="macro",
         ticker="",          # no hay empresa: la regla del cashtag no aplica
+        # La serie queda en el item: con dos posts de macro al día, el
+        # segundo tiene que saber cuál ya salió para no repetir el dato.
+        motivo=f"macro:{c.serie}",
         sujeto=c.alias,     # ...así que el sujeto se exige por aquí
         angulo="mercado",
         angle=c.angulo,

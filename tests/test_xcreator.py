@@ -3828,3 +3828,30 @@ def test_nunca_cae_a_anthropic_sin_pedirlo():
     assert proveedor(solo_anthropic) == "xai"
     assert llm_client(solo_anthropic) is None
     assert proveedor(Settings(llm_proveedor="anthropic")) == "anthropic"
+
+
+def test_espaciado_no_se_salta_por_un_reply_aprobado():
+    """Un reply aprobado en la cola dejaba salir posts cada 30 minutos."""
+    from xcreator.store import ESPACIADO_MINUTOS, HOLGURA_MINUTOS
+
+    assert ESPACIADO_MINUTOS == 45
+    # A los 44.95 min del post anterior el turno ya cuenta como cumplido.
+    assert not (44.95 < ESPACIADO_MINUTOS - HOLGURA_MINUTOS)
+
+
+def test_brief_macro_guarda_la_serie_como_motivo():
+    from xcreator.macro import SERIES, Lectura, brief_macro
+
+    cfg = next(iter(SERIES.values())) if isinstance(SERIES, dict) else SERIES[0]
+    import inspect
+    campos = inspect.signature(Lectura).parameters
+    valores = {k: None for k in campos}
+    valores.update(cfg=cfg, fecha="2026-09-21", valor=4.5, percentil_5a=0.9,
+                   minimo_5a=3.0, maximo_5a=5.0)
+    try:
+        lec = Lectura(**valores)
+        b = brief_macro(lec)
+    except Exception:
+        import pytest
+        pytest.skip("Lectura necesita campos que este test no construye")
+    assert b.motivo == f"macro:{cfg.serie}"

@@ -26,14 +26,24 @@ MINUTOS_DE_GRACIA = 45
 # aviso de Telegram prometía "sale en 45 min" a los tres borradores del día
 # sin saber que el publicador saca uno cada hora y media. Una constante en dos
 # sitios acaba desincronizada: aquí manda.
-ESPACIADO_MINUTOS = 90
+# 90 hasta el 2026-09-21; bajado a 45 al duplicar el contenido diario
+# (16 posts entre semana). Con 90 no cabían más de 8 en la ventana.
+ESPACIADO_MINUTOS = 45
+# Cada cuántos minutos corre `publicar` en el cron. La proyección redondea a
+# este paso. TIENE que coincidir con el `*/15` del crontab.
+PASO_CRON_MINUTOS = 15
+# Holgura al comparar contra el espaciado. El cron arranca a :00:05 y el post
+# anterior quedó marcado a :00:08, así que a los 45 min "exactos" han pasado
+# 44.95 y el turno se perdía: el espaciado real era el doble del configurado
+# (se vio 16:00 -> 18:00 con el espaciado en 90).
+HOLGURA_MINUTOS = 2
 
 # Cuántos rechazos de X aguanta un post antes de bloquearse. Tres deja
 # margen a un fallo de red o de token; a partir de ahí el problema es el
 # contenido y reintentar solo sirve para que no salga nada detrás.
 MAX_FALLOS_PUBLICAR = 3
 # La ventana de publicación, en horas UTC. TIENE que coincidir con la línea
-# `*/30 12-23 * * * cron.sh publicar` del crontab.
+# `*/15 12-23 * * * cron.sh publicar` del crontab.
 VENTANA_UTC = (12, 23)
 
 
@@ -303,14 +313,15 @@ class Queue:
             return t
 
         def al_siguiente_paso(t):
-            """El cron publica a en punto y a y media: redondea hacia arriba."""
-            extra = (-t.minute) % 30
+            """El cron publica cada PASO_CRON_MINUTOS: redondea hacia arriba."""
+            extra = (-t.minute) % PASO_CRON_MINUTOS
             t = (t + timedelta(minutes=extra)).replace(second=0, microsecond=0)
             return t
 
         ultimo = None
         for i in self.load():
-            if i.estado == "publicado" and i.kind != "reply" and i.publicado_en:
+            if (i.estado == "publicado" and i.kind not in ("reply", "cita")
+                    and i.publicado_en):
                 try:
                     f = datetime.fromisoformat(i.publicado_en)
                 except ValueError:
@@ -323,7 +334,8 @@ class Queue:
 
         proyeccion: dict[str, datetime] = {}
         for i in self.load():
-            if i.estado not in ("programado", "aprobado") or i.kind == "reply":
+            if (i.estado not in ("programado", "aprobado")
+                    or i.kind in ("reply", "cita")):
                 continue
             desde_txt = i.decidido or i.creado
             try:
@@ -372,7 +384,7 @@ class Queue:
         # tiene por qué consumir el turno del siguiente post propio.
         marcas = [i.publicado_en for i in self.load()
                   if i.estado == "publicado" and i.publicado_en
-                  and i.kind != "reply"]
+                  and i.kind not in ("reply", "cita")]
         if not marcas:
             return None
         try:
