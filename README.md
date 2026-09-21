@@ -1,5 +1,7 @@
 # X Creator
 
+Especificación completa del sistema: [`SPEC.md`](SPEC.md).
+
 Agente de contenido para X. Analiza el engagement real de la cuenta, redacta
 sobre datos duros con la metodología de un analista, y deja los borradores en
 una cola de aprobación. **No publica nada por su cuenta.**

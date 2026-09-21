@@ -38,6 +38,14 @@ Solo por dos rutas de `API/.env`, ambas de **solo lectura**:
 
 Si ese proyecto desaparece, aquí se pierde una fuente, no el sistema.
 
+## Especificación completa
+
+`SPEC.md` es el documento autocontenido del sistema: restricciones de la
+plataforma, modelo de datos, prompts literales, validaciones, cupos, cron,
+método de medición y los 18 fallos ya ocurridos con su guarda. Está escrito
+para que otro modelo pueda reimplementar el agente sin leer el código. Si
+cambias una regla de contenido o un cupo, actualízalo ahí también.
+
 ## Arquitectura
 
 | Módulo | Qué hace |
