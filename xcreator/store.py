@@ -265,10 +265,35 @@ class Queue:
 
         hoy = date.today().isoformat()
         quien = autor.lstrip("@").lower()
+        # Las respuestas en tus propios posts NO gastan este cupo: tienen el
+        # suyo (conversaciones_de_hoy). Son conversaciones que ya empezaron.
         return sum(1 for i in self.load()
                    if i.kind == "reply" and (i.creado or "")[:10] == hoy
+                   and i.brief_id != "conversacion"
                    and (not quien
                         or (i.responde_a or "").lstrip("@").lower() == quien))
+
+    def conversaciones_de_hoy(self) -> int:
+        """Respuestas propuestas hoy a gente que contestó en tus posts."""
+        from datetime import date
+
+        hoy = date.today().isoformat()
+        return sum(1 for i in self.load()
+                   if i.brief_id == "conversacion"
+                   and (i.creado or "")[:10] == hoy)
+
+    def replies_reciclados(self) -> set[str]:
+        """Ids de tus replies que ya se reescribieron como post original."""
+        return {i.motivo.split(":", 1)[1] for i in self.load()
+                if (i.motivo or "").startswith("reply:")}
+
+    def reciclados_de_hoy(self) -> int:
+        from datetime import date
+
+        hoy = date.today().isoformat()
+        return sum(1 for i in self.load()
+                   if (i.motivo or "").startswith("reply:")
+                   and (i.creado or "")[:10] == hoy)
 
     def ya_respondido(self, url_origen: str) -> bool:
         """True si ya hay un borrador de reply para ESE post.

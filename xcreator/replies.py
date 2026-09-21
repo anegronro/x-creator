@@ -399,6 +399,7 @@ def draft_reply(
     client: Any = None,
     model: str | None = None,
     modo: str = "reply",
+    contexto_propio: str = "",
 ) -> ReplyDraft:
     """Redacta un reply, o devuelve uno marcado como declinado.
 
@@ -426,7 +427,21 @@ def draft_reply(
                 model=modelo_usado,
             )
 
-    if modo == "cita":
+    if modo == "conversacion":
+        # Alguien respondió a un post TUYO. Aquí no se aporta un dato a una
+        # conversación ajena: se sostiene la propia. Es la diferencia entre
+        # un autor que contesta y uno que publica y desaparece.
+        cabecera = (f"TU POST ORIGINAL:\n\"\"\"\n{contexto_propio.strip()}\n\"\"\"\n\n"
+                    f"{mencion.autor} TE RESPONDIÓ:\n"
+                    f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n"
+                    "Contestas como AUTOR del post, en tu propia conversación. "
+                    "Responde a SU punto, no repitas tu post. Si tiene razón en "
+                    "algo, dilo; si no, di por qué en una frase. Una pregunta "
+                    "de vuelta está bien si de verdad te interesa la respuesta. "
+                    "Nada de \"great point\" ni de agradecer por agradecer. Si "
+                    "solo es un insulto, spam o un emoji, pon aporta_algo=false."
+                    "\n\n")
+    elif modo == "cita":
         cabecera = (f"POST QUE VAS A CITAR (de {mencion.autor}):\n"
                     f"\"\"\"\n{mencion.texto.strip()}\n\"\"\"\n\n"
                     "Esto NO es un reply: es una CITA. Sale en TU perfil y en "
@@ -502,10 +517,13 @@ def draft_reply(
     # cualquier otra sería inventada, y esta es la comprobación que lo impide
     # en código en vez de confiar en que el prompt se respete.
     permitidos = (brief.allowed_numbers() if brief else []) \
-        + _numeros_del_texto(mencion.texto)
+        + _numeros_del_texto(mencion.texto) \
+        + _numeros_del_texto(contexto_propio)
     return ReplyDraft(
         texto=texto,
-        kind=modo,
+        # Una respuesta en tu propio post se pega a mano igual que un reply:
+        # para la cola ES un reply. Lo que la distingue es el brief_id.
+        kind="reply" if modo == "conversacion" else modo,
         que_aporta=parsed.que_aporta,
         autor=mencion.autor, url=mencion.url, ticker=relevancia.ticker,
         brief_id=brief.brief_id if brief else "", model=modelo_usado,

@@ -3952,3 +3952,104 @@ def test_publicar_bloquea_post_que_empieza_por_arroba_o_sin_fuente():
     bien = Item(texto="Tokenized stocks got a green light from @SECGov today.", **base)
     assert not any("atribuye" in p or "mención" in p
                    for p in revisar_antes_de_publicar(bien))
+
+
+# --- Conversaciones: de reply a post y responder a quien responde -------------
+
+def _px(pid, autor, texto, imp=0, padre="", padre_autor="", creado=""):
+    from xcreator.xapi import PostAjeno
+
+    return PostAjeno(post_id=pid, autor=autor, texto=texto, creado=creado,
+                     metricas={"impression_count": imp}, responde_a=padre,
+                     responde_a_autor=padre_autor)
+
+
+def test_menciones_se_emparejan_con_su_padre():
+    from xcreator.xapi import _con_padres
+
+    data = {
+        "data": [{"id": "20", "text": "@anegronro nah, rates matter more",
+                  "author_id": "u2", "created_at": "2026-09-21T15:00:00Z",
+                  "referenced_tweets": [{"type": "replied_to", "id": "10"}]}],
+        "includes": {
+            "users": [{"id": "u1", "username": "anegronro"},
+                      {"id": "u2", "username": "otro"}],
+            "tweets": [{"id": "10", "text": "My take on $NVDA", "author_id": "u1"}],
+        },
+    }
+    (m, padre), = _con_padres(data)
+    assert m.autor == "@otro" and m.responde_a == "10"
+    assert padre.autor == "@anegronro" and padre.texto == "My take on $NVDA"
+    assert m.url == "https://x.com/otro/status/20"
+
+
+def test_solo_se_contesta_lo_que_responde_a_un_post_tuyo():
+    from datetime import datetime, timezone
+
+    from xcreator.conversaciones import respuestas_por_contestar
+
+    ahora = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    mio = _px("10", "@anegronro", "My take on rates")
+    ajeno = _px("11", "@zerohedge", "Rates are going up")
+    pares = [
+        (_px("20", "@otro", "@anegronro disagree, the Fed blinks", creado=ahora), mio),
+        # Responde a un tercero en un hilo donde yo estaba: me "menciona" pero no es mío.
+        (_px("21", "@otro", "@zerohedge @anegronro lol", creado=ahora), ajeno),
+        # Yo mismo.
+        (_px("22", "@anegronro", "@otro fair", creado=ahora), mio),
+        # Solo etiquetas.
+        (_px("23", "@bot", "@anegronro", creado=ahora), mio),
+        # Viejo.
+        (_px("24", "@otro", "@anegronro old point", creado="2026-01-01T00:00:00Z"), mio),
+    ]
+    out = respuestas_por_contestar(pares, "anegronro", lambda url: False)
+    assert [m.post_id for m, _ in out] == ["20"]
+    # Ya respondido: fuera.
+    assert respuestas_por_contestar(pares, "@anegronro", lambda url: True) == []
+
+
+def test_reply_a_post_solo_lo_que_funciono_y_es_de_mercados():
+    from xcreator.conversaciones import candidatos_reply_a_post
+
+    padre = _px("1", "@WatcherGuru", "Senate delays Clarity Act vote")
+    pares = [
+        (_px("a", "@anegronro", "@WatcherGuru We can't even get the Clarity Act passed", 11048, "1"), padre),
+        (_px("b", "@anegronro", "@mindfulheal The kind of dad I aspire to be", 3783, "2"),
+         _px("2", "@mindfulheal", "A dad hugging his kid")),
+        (_px("c", "@anegronro", "@x XRP still pretty cheap tho", 2389, "3"), None),
+        (_px("d", "@anegronro", "@x $BTC fine", 120, "4"), None),
+    ]
+    out = candidatos_reply_a_post(pares, set())
+    assert [r.post_id for r, _ in out] == ["a", "c"]
+    assert [r.post_id for r, _ in candidatos_reply_a_post(pares, {"a"})] == ["c"]
+
+
+def test_brief_desde_reply_quita_la_mencion_y_prohibe_el_arroba():
+    from xcreator.conversaciones import brief_desde_reply
+    from xcreator.generate import SIN_HISTORIAL
+
+    padre = _px("1", "@WatcherGuru", "Senate delays Clarity Act vote to 2027")
+    b = brief_desde_reply(
+        _px("a", "@anegronro", "@WatcherGuru We can't even get the Clarity Act passed", 11048, "1"),
+        padre)
+    ctx = " ".join(b.context)
+    assert "\"We can't even get the Clarity Act passed\"" in ctx
+    assert "11,048" in ctx and "empieces con @" in ctx
+    assert b.motivo == "reply:a" and "desde_reply" in SIN_HISTORIAL
+    assert 2027 in b.allowed_numbers()
+
+
+def test_las_conversaciones_no_gastan_el_cupo_de_replies(tmp_path):
+    from xcreator.replies import ReplyDraft
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    normal = ReplyDraft(texto="t", que_aporta="", autor="@zerohedge",
+                        url="https://x.com/zerohedge/status/1")
+    conv = ReplyDraft(texto="t", que_aporta="", autor="@otro",
+                      url="https://x.com/otro/status/2", brief_id="conversacion")
+    q.add(normal)
+    q.add(conv)
+    assert q.replies_de_hoy() == 1
+    assert q.conversaciones_de_hoy() == 1
+    assert q.replies_opinion_de_hoy() == 1  # solo el normal, sin brief

@@ -121,6 +121,20 @@ case "${1:-}" in
     fi
     exit $codigo
     ;;
+  conversar)
+    # Respuestas a quien contesta en tus posts. Lee solo las menciones NUEVAS
+    # (since_id): X cobra por post devuelto, así que cuesta centavos al mes.
+    salida=$("$XC" conversar 2>&1); codigo=$?
+    registrar "conversar: $(echo "$salida" | tail -4)"
+    exit $codigo
+    ;;
+  recuperar)
+    # Tus replies de más de 500 impresiones, reescritos como post original:
+    # los replies no cuentan para el programa de monetización; los posts sí.
+    salida=$("$XC" recuperar 2>&1); codigo=$?
+    registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
+    exit $codigo
+    ;;
   marcador)
     # El marcador semanal: qué acciones se salieron de su rango del modelo.
     # Viernes después del cierre, para que "la semana" sea la semana entera.

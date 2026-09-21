@@ -36,6 +36,14 @@ class PostAjeno:
     # like_count, reply_count, retweet_count, quote_count... Pedirlas no
     # cuesta más: X cobra por post leído, no por campo.
     metricas: dict = field(default_factory=dict)
+    # Id del post al que responde este, si es un reply. Vacío si no lo es.
+    responde_a: str = ""
+    # Autor del post al que responde ("@handle"), cuando la API lo expande.
+    responde_a_autor: str = ""
+
+    @property
+    def impresiones(self) -> int:
+        return int((self.metricas or {}).get("impression_count", 0) or 0)
 
     @property
     def conversacion(self) -> int:
@@ -164,6 +172,123 @@ class ClienteX:
                       metricas=t.get("public_metrics") or {})
             for t in devueltos
         ]
+
+
+    def _leer_con_reserva(self, ruta: str, limite: int, **params) -> dict:
+        """GET que reserva el máximo antes y devuelve lo no usado después.
+
+        X cobra por post devuelto, incluidos los que vienen en `includes`
+        (los padres expandidos). Se reserva el peor caso para que la guarda
+        de presupuesto proteja aunque la respuesta venga llena.
+        """
+        reserva = COSTO_POST_LEIDO * limite * 2
+        self._cobrar(reserva)
+        try:
+            data = self._get(ruta, **params)
+        except XAPIError:
+            self.gastado -= reserva
+            raise
+        n = len(data.get("data") or []) + len(
+            (data.get("includes") or {}).get("tweets") or [])
+        self.gastado -= reserva - COSTO_POST_LEIDO * n
+        return data
+
+    def menciones(self, handle: str, *, desde_id: str | None = None,
+                  limite: int = 20) -> list[tuple[PostAjeno, PostAjeno | None]]:
+        """Replies y menciones a `handle`, cada uno con el post al que responde.
+
+        Con `desde_id` solo llega lo nuevo, y X solo cobra lo que devuelve:
+        una cuenta pequeña recibe pocas respuestas al día, así que mirar cada
+        media hora cuesta centavos al mes.
+        """
+        uid = self.user_id(handle)
+        limite = max(5, min(limite, 100))
+        params = {
+            "max_results": limite,
+            "tweet.fields": "created_at,public_metrics,referenced_tweets,author_id",
+            "expansions": "author_id,referenced_tweets.id,referenced_tweets.id.author_id",
+            "user.fields": "username",
+        }
+        if desde_id:
+            params["since_id"] = desde_id
+        data = self._leer_con_reserva(f"/users/{uid}/mentions", limite, **params)
+        return _con_padres(data)
+
+    def mis_replies(self, handle: str, *, horas: int = 24,
+                    limite: int = 50) -> list[tuple[PostAjeno, None]]:
+        """Los replies de `handle` de las últimas `horas`, SIN su post padre.
+
+        Se busca `from:x is:reply` en vez de leer el timeline entero: el
+        timeline trae también los posts propios, y pagarlos para descartarlos
+        duplicaba el costo. Y el padre NO se expande aquí: la primera versión
+        lo hacía y pagaba 100 posts ($0.50) para usar 2. El padre se pide con
+        `post()` solo para los que de verdad se reciclan.
+        """
+        from datetime import datetime, timedelta, timezone
+
+        h = handle.lstrip("@")
+        desde = (datetime.now(timezone.utc) - timedelta(hours=horas)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        limite = max(10, min(limite, 100))
+        data = self._leer_con_reserva(
+            "/tweets/search/recent", limite,
+            query=f"from:{h} is:reply", start_time=desde, max_results=limite,
+            **{"tweet.fields": "created_at,public_metrics,referenced_tweets"})
+        return [(PostAjeno(post_id=t["id"], autor="@" + h,
+                           texto=t.get("text", ""),
+                           creado=t.get("created_at", ""),
+                           metricas=t.get("public_metrics") or {},
+                           responde_a=_padre(t)), None)
+                for t in data.get("data") or []]
+
+    def post(self, post_id: str) -> PostAjeno | None:
+        """Un post suelto con su autor. Para el padre de un reply reciclado."""
+        self._cobrar(COSTO_POST_LEIDO + COSTO_USUARIO_LEIDO)
+        try:
+            data = self._get(f"/tweets/{post_id}", expansions="author_id",
+                             **{"user.fields": "username",
+                                "tweet.fields": "created_at,public_metrics"})
+        except XAPIError:
+            self.gastado -= COSTO_POST_LEIDO + COSTO_USUARIO_LEIDO
+            raise
+        t = data.get("data")
+        if not t:
+            return None
+        usuarios = {u["id"]: "@" + u.get("username", "")
+                    for u in (data.get("includes") or {}).get("users") or []}
+        return PostAjeno(post_id=t["id"], autor=usuarios.get(t.get("author_id", ""), ""),
+                         texto=t.get("text", ""), creado=t.get("created_at", ""),
+                         metricas=t.get("public_metrics") or {})
+
+def _con_padres(data: dict) -> list[tuple[PostAjeno, PostAjeno | None]]:
+    """Empareja cada post de `data` con su padre de `includes`."""
+    usuarios = {u["id"]: "@" + u.get("username", "")
+                for u in (data.get("includes") or {}).get("users") or []}
+    padres = {t["id"]: t for t in (data.get("includes") or {}).get("tweets") or []}
+
+    def a_post(t: dict) -> PostAjeno:
+        padre_id = _padre(t)
+        padre = padres.get(padre_id) or {}
+        return PostAjeno(
+            post_id=t["id"], autor=usuarios.get(t.get("author_id", ""), ""),
+            texto=t.get("text", ""), creado=t.get("created_at", ""),
+            metricas=t.get("public_metrics") or {}, responde_a=padre_id,
+            responde_a_autor=usuarios.get(padre.get("author_id", ""), ""))
+
+    out = []
+    for t in data.get("data") or []:
+        p = a_post(t)
+        padre = padres.get(p.responde_a)
+        out.append((p, a_post(padre) if padre else None))
+    return out
+
+
+def _padre(t: dict) -> str:
+    """El id del post al que responde `t`, o "" si no es un reply."""
+    for r in t.get("referenced_tweets") or []:
+        if r.get("type") == "replied_to":
+            return r.get("id", "")
+    return ""
 
 
 def costo_estimado(n_cuentas: int, posts_por_cuenta: int,

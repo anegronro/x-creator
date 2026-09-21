@@ -1366,6 +1366,121 @@ def _grafico_macro(brief, settings, destino, firma):
         firma=firma)
 
 
+@app.command("conversar")
+def conversar(
+    encolar: bool = typer.Option(True, help="Guardar en la cola (y Telegram)."),
+) -> None:
+    """Propone respuesta a quien contestó en tus posts. Se pegan a mano."""
+    import json as _json
+
+    from xcreator.conversaciones import (
+        CONVERSACIONES_POR_DIA, respuestas_por_contestar,
+    )
+    from xcreator.replies import Mencion, Relevancia, draft_reply
+    from xcreator.xapi import ClienteX, XAPIError
+
+    q, s = _queue()
+    if not s.x_handle:
+        typer.secho("Falta X_HANDLE en API/.env.", fg="red", err=True)
+        raise typer.Exit(1)
+    hechas = q.conversaciones_de_hoy()
+    if hechas >= CONVERSACIONES_POR_DIA:
+        typer.echo(f"Cupo de conversaciones agotado ({hechas}/"
+                   f"{CONVERSACIONES_POR_DIA} hoy). Sin lecturas: $0.000.")
+        return
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+
+    clave = f"menciones:{s.x_handle.lstrip('@').lower()}"
+    try:
+        ultimos = _json.loads(s.x_estado_path.read_text())
+    except (OSError, ValueError):
+        ultimos = {}
+    try:
+        pares = cliente.menciones(s.x_handle, desde_id=ultimos.get(clave))
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    # En prueba (--no-encolar) el cursor no avanza: si avanzara, esas
+    # menciones ya no se volverían a ver cuando corra de verdad.
+    if pares and encolar:
+        ultimos[clave] = max((m.post_id for m, _ in pares), key=int)
+        s.x_estado_path.parent.mkdir(parents=True, exist_ok=True)
+        s.x_estado_path.write_text(_json.dumps(ultimos, indent=2))
+
+    pendientes = respuestas_por_contestar(pares, s.x_handle, q.ya_respondido)
+    typer.echo(f"{len(pares)} menciones nuevas -> {len(pendientes)} respuestas "
+               f"a tus posts por contestar. Gasto: ${cliente.gastado:.3f}")
+    for m, padre in pendientes[:CONVERSACIONES_POR_DIA - hechas]:
+        d = draft_reply(
+            Mencion(m.autor, m.texto, m.url, m.post_id),
+            Relevancia(None, solo_opinion=True, tema="una conversación en tu post"),
+            s, modo="conversacion", contexto_propio=padre.texto)
+        d.brief_id = "conversacion"
+        if d.declinado or not d.texto:
+            typer.echo(f"  {m.autor}: sin respuesta ({d.motivo or 'nada que aportar'})")
+            continue
+        typer.echo(f"  {m.autor}: {d.texto}")
+        if encolar:
+            q.add(d)
+
+
+@app.command("recuperar")
+def recuperar(
+    encolar: bool = typer.Option(True, help="Guardar en la cola."),
+    umbral: int = typer.Option(0, help="Impresiones mínimas (0 = la de fábrica)."),
+) -> None:
+    """Reescribe como post original tus replies que ya funcionaron."""
+    from xcreator.conversaciones import (
+        POSTS_DESDE_REPLIES_POR_DIA, UMBRAL_REPLY_A_POST, brief_desde_reply,
+        candidatos_reply_a_post,
+    )
+    from xcreator.generate import draft_posts
+    from xcreator.xapi import ClienteX, XAPIError
+
+    q, s = _queue()
+    if not s.x_handle:
+        typer.secho("Falta X_HANDLE en API/.env.", fg="red", err=True)
+        raise typer.Exit(1)
+    hechos = q.reciclados_de_hoy()
+    if hechos >= POSTS_DESDE_REPLIES_POR_DIA:
+        typer.echo(f"Ya se reciclaron {hechos} replies hoy.")
+        return
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+        pares = cliente.mis_replies(s.x_handle)
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+
+    candidatos = candidatos_reply_a_post(
+        pares, q.replies_reciclados(), umbral=umbral or UMBRAL_REPLY_A_POST)
+    typer.echo(f"{len(pares)} replies tuyos leídos -> {len(candidatos)} con "
+               f"más de {umbral or UMBRAL_REPLY_A_POST} impresiones y de "
+               f"mercados. Gasto: ${cliente.gastado:.3f}")
+    for reply, _ in candidatos[:POSTS_DESDE_REPLIES_POR_DIA - hechos]:
+        typer.echo(f"\nReply ({reply.impresiones:,} imp): {reply.texto[:120]}")
+        padre = None
+        if reply.responde_a:
+            try:
+                padre = cliente.post(reply.responde_a)
+            except XAPIError as e:
+                typer.secho(f"  sin el post padre ({e}); se sigue sin él",
+                            fg="yellow")
+        brief = brief_desde_reply(reply, padre)
+        drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+        if not drafts:
+            typer.secho("Sin borradores: el modelo no respondió.", fg="red", err=True)
+            raise typer.Exit(1)
+        _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                           brief, q, s, encolar=encolar)
+
+
 @app.command("gasto")
 def gasto_cmd(dias: int = typer.Option(7, help="Cuántos días mostrar.")) -> None:
     """Lo que ha costado el modelo que redacta, día a día."""
