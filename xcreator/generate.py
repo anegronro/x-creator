@@ -24,7 +24,7 @@ from pydantic import BaseModel, Field
 
 from xcreator.brief import Brief
 
-MODEL = "claude-opus-5"
+MODEL = "grok-4.6"
 MAX_CHARS = 280
 # Tipos de brief sin predicciones guardadas: ahí no hay llamada pasada que
 # citar, así que atribuirse una es inventarla.

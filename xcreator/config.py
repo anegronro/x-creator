@@ -29,7 +29,7 @@ class Settings:
     # créditos de Anthropic se acabaron y no se recargan. Con la clave
     # puesta, redacta Grok; sin ella, se cae a Claude si hay clave.
     xai_api_key: str | None = None
-    xai_modelo: str = "grok-4.7"
+    xai_modelo: str = "grok-4.6"
     # "xai" o "anthropic". Vacío = xai si hay XAI_API_KEY, si no anthropic.
     llm_proveedor: str = ""
     # Fuentes de datos de mercado (solo lectura). Nada de ejecución.
@@ -145,7 +145,7 @@ def load_settings(env_file: Path | None = None) -> Settings:
         anthropic_api_key=get("ANTHROPIC_API_KEY"),
         anthropic_workspace_id=get("ANTHROPIC_WORKSPACE_ID"),
         xai_api_key=get("XAI_API_KEY"),
-        xai_modelo=get("XAI_MODELO") or "grok-4.7",
+        xai_modelo=get("XAI_MODELO") or "grok-4.6",
         llm_proveedor=(get("LLM_PROVEEDOR") or "").lower(),
         fmp_api_key=get("FMP_API_KEY"),
         finnhub_api_key=get("FINNHUB_API_KEY"),

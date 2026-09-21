@@ -28,10 +28,13 @@ from typing import Any
 import httpx
 
 XAI_URL = "https://api.x.ai/v1/chat/completions"
-# El más capaz de xAI a septiembre de 2026. Con posts de 280 caracteres el
-# costo por llamada ronda los 3 centavos, así que no compensa bajar de gama.
-XAI_MODELO = "grok-4.7"
-TIMEOUT = 180.0
+# Elegido por Angel el 2026-09-21. Mismo precio que grok-4.7. Con posts de
+# 280 caracteres el costo por llamada ronda los 3 centavos.
+XAI_MODELO = "grok-4.6"
+# Grok razona antes de responder y la salida estructurada tarda: 35 segundos
+# con un prompt corto, y el borrador completo pasó de 180 y cortó por
+# timeout. Diez minutos sobra; el cron tiene flock, no se solapa.
+TIMEOUT = 600.0
 
 # Dólares por millón de tokens (entrada, salida), tramo de menos de 200k de
 # contexto, que es donde viven todos nuestros prompts. docs.x.ai/docs/models.

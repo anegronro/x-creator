@@ -3786,7 +3786,7 @@ def test_xai_parse_devuelve_el_modelo_pydantic_y_anota_el_gasto(tmp_path):
     assert r.parsed_output.variants[0].text.startswith("$NVDA")
     cuerpo = http.peticion["json"]
     # El id de Claude no viaja a xAI: manda el modelo del cliente.
-    assert cuerpo["model"] == "grok-4.7"
+    assert cuerpo["model"] == "grok-4.6"
     assert cuerpo["messages"][0] == {"role": "system", "content": "SYS"}
     esquema = cuerpo["response_format"]["json_schema"]["schema"]
     assert "$defs" not in json.dumps(esquema)
