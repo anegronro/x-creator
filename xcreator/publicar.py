@@ -23,7 +23,8 @@ from pathlib import Path
 import httpx
 
 from xcreator.generate import (
-    MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cifras_mal_formateadas,
+    MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cashtags_de_mas,
+    cifras_mal_formateadas,
     es_ingles, falta_sujeto, falta_ticker, lleva_raya, validate_numbers,
 )
 
@@ -113,6 +114,17 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
     # puede meterlo: la raya larga delata texto generado, y las cifras van en
     # convención inglesa (79,900 y 10.99).
     entero = "\n".join(piezas)
+    # X solo admite UN cashtag por post y devuelve 403 con el resto. Se
+    # revisa aquí porque el que lo rompió no lo escribió un humano: el brief
+    # del marcador pedía "dos o tres casos con cashtag" y el post se quedó
+    # dos días bloqueando la cola a base de reintentos.
+    for p in piezas:
+        sobran = cashtags_de_mas(p)
+        if sobran:
+            problemas.append(
+                f"lleva {len(sobran) + 1} cashtags ({', '.join(sobran)} de más): "
+                f"X solo admite uno y rechaza el post. Nombra las demás sin el "
+                f"signo de dólar")
     if lleva_raya(entero):
         problemas.append("usa una raya como puntuación: va punto, coma o dos puntos")
     malas = cifras_mal_formateadas(entero)

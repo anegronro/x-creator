@@ -3716,3 +3716,26 @@ def test_la_cita_y_el_post_de_regulacion_no_usan_el_mismo_titular():
     assert "fuentes_usadas()" in inspect.getsource(citar)
     reg = inspect.getsource(_redactar_regulacion)
     assert '"cita"' in reg and "fuentes_usadas()" in reg
+
+
+def test_cashtags_de_mas_encuentra_los_que_sobran():
+    """X admite UN cashtag: el segundo y el tercero hacen fallar el post."""
+    from xcreator.generate import cashtags_de_mas
+
+    assert cashtags_de_mas("$ATAT left the range, $COHR and $EQIX too") == [
+        "$COHR", "$EQIX"]
+    # El ticker repetido en sus dos formas es lo normal y no sobra nada.
+    assert cashtags_de_mas("$NVDA at 45x. NVDA is not cheap.") == []
+    assert cashtags_de_mas("no tickers here") == []
+
+
+def test_publicar_bloquea_el_post_con_dos_cashtags():
+    """El marcador que tumbó la cola dos días no debe poder salir."""
+    from xcreator.publicar import revisar_antes_de_publicar
+    from xcreator.store import Item
+
+    item = Item(id="x", creado="2026-09-18T20:31:00+00:00", estado="programado",
+                texto="We publish our misses. $ATAT is 40% below, $COHR too.",
+                kind="marcador")
+    problemas = revisar_antes_de_publicar(item)
+    assert any("cashtags" in p for p in problemas), problemas

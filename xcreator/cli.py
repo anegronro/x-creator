@@ -1077,6 +1077,7 @@ def publicar(
     from xcreator.publicar import (
         PublicarError, costo, publicar_item, revisar_antes_de_publicar,
     )
+    from xcreator.store import MAX_FALLOS_PUBLICAR
     from xcreator.xauth import AlmacenTokens, AuthError, token_vigente
 
     q, s = _queue()
@@ -1156,7 +1157,16 @@ def publicar(
             res = publicar_item(i, token, handle=s.x_handle or "",
                                 imagen=imagen)
         except PublicarError as e:
-            typer.secho(f"[FALLÓ] {i.id}: {e}", fg="red")
+            fallos = (i.fallos_al_publicar or 0) + 1
+            typer.secho(f"[FALLÓ x{fallos}] {i.id}: {e}", fg="red")
+            if fallos >= MAX_FALLOS_PUBLICAR:
+                q.update(i.id, fallos_al_publicar=fallos, estado="bloqueado",
+                         motivo_rechazo=f"X lo rechazó {fallos} veces: {e}")
+                typer.secho(
+                    f"  bloqueado tras {fallos} intentos: no se reintenta más "
+                    f"y la cola sigue con el siguiente.", fg="yellow")
+            else:
+                q.update(i.id, fallos_al_publicar=fallos)
             continue
         q.marcar_publicado(i.id, post_id=res.post_id)
         publicados += 1

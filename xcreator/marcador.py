@@ -101,8 +101,11 @@ def brief_marcador(briefs: list[Brief]) -> Brief | None:
             "Estas predicciones SÍ existen y están guardadas: aquí es legítimo "
             "decir 'our model', 'our range'.",
             "La imagen lleva la lista completa: el texto no la repite entera. "
-            "Nombra dos o tres casos con cashtag ($TICKER) y di qué tienen en "
-            "común o qué no esperaba el modelo, sin inventar la causa.",
+            "Nombra dos o tres casos y di qué tienen en común o qué no "
+            "esperaba el modelo, sin inventar la causa.",
+            "UN SOLO CASHTAG en todo el post. X rechaza con error cualquier "
+            "post con dos o más $TICKER, así que el primero lleva el dólar "
+            "($ATAT) y los demás van a secas (COHR, EQIX).",
             "No expliques POR QUÉ se movió una acción: no tienes esa noticia. "
             "Di que se salió del rango y cuánto; la causa, pregúntala.",
         ],

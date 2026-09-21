@@ -383,6 +383,25 @@ def falta_ticker(texto: str, ticker: str) -> list[str]:
     return faltan
 
 
+_CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
+
+
+def cashtags_de_mas(texto: str) -> list[str]:
+    """Los cashtags que sobran. X solo admite UNO por post.
+
+    Lo aprendimos por las malas: el marcador semanal nombraba tres empresas
+    con `$TICKER` porque el brief se lo pedía, X devolvió 403 y el post se
+    quedó al frente de la cola reintentándose cada 30 minutos. No publicó
+    nada durante dos días, y el error no estaba en lo que se reintentaba
+    sino en lo que se generó.
+
+    La segunda empresa se nombra sin el dólar: `$ATAT` y luego `COHR`.
+    """
+    vistos = list(dict.fromkeys(m.group(1).upper()
+                                for m in _CASHTAG.finditer(texto)))
+    return [f"${c}" for c in vistos[1:]]
+
+
 # Un post puede cerrar legítimamente con el ticker, sin puntuación final.
 _CIERRA_CON_TICKER = re.compile(r"\$?[A-Z]{1,5}$")
 

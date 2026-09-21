@@ -27,6 +27,11 @@ MINUTOS_DE_GRACIA = 45
 # sin saber que el publicador saca uno cada hora y media. Una constante en dos
 # sitios acaba desincronizada: aquí manda.
 ESPACIADO_MINUTOS = 90
+
+# Cuántos rechazos de X aguanta un post antes de bloquearse. Tres deja
+# margen a un fallo de red o de token; a partir de ahí el problema es el
+# contenido y reintentar solo sirve para que no salga nada detrás.
+MAX_FALLOS_PUBLICAR = 3
 # La ventana de publicación, en horas UTC. TIENE que coincidir con la línea
 # `*/30 12-23 * * * cron.sh publicar` del crontab.
 VENTANA_UTC = (12, 23)
@@ -71,6 +76,11 @@ class Item:
     url_origen: str = ""
     publicado_en: str = ""
     post_id: str = ""
+    # Cuántas veces X rechazó este post. Un rechazo por contenido (un cashtag
+    # de más, por ejemplo) no se arregla reintentando: el item se queda al
+    # frente de la cola y NADA se publica detrás. A los tres intentos se
+    # bloquea y la cola sigue.
+    fallos_al_publicar: int = 0
     metricas: dict = field(default_factory=dict)
 
     @property
