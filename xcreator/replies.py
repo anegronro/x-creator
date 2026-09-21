@@ -246,6 +246,8 @@ def encontrar_relevancia(mencion: Mencion, briefs: list[Brief],
     )
 
 
+from xcreator.generate import VOZ_PERSONAL  # noqa: E402
+
 _SYSTEM_REPLY = """You write replies on X for a finance account. A reply's only \
 job is to add something the original post does not have.
 
@@ -287,7 +289,7 @@ setting `aporta_algo` to false. Declining is a correct answer and is better \
 than a generic reply.
 
 Tone: a peer adding one hard number to the conversation. One or two \
-sentences. No preamble, no "actually"."""
+sentences. No preamble, no "actually".""" + "\n\n" + VOZ_PERSONAL
 
 
 _SYSTEM_OPINION = """You write replies on X for a finance account. This one is \
@@ -319,7 +321,7 @@ full stop, a comma or a colon. Hyphens inside a word are fine ("10-year").
 correct answer and is far better than a generic take.
 
 Tone: someone who has watched this cycle before and is unimpressed by the \
-headline. One or two sentences, no preamble."""
+headline. One or two sentences, no preamble.""" + "\n\n" + VOZ_PERSONAL
 
 
 class _ReplyOut:

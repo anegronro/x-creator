@@ -99,7 +99,8 @@ def brief_marcador(briefs: list[Brief]) -> Brief | None:
             "enseña dónde falló su propio modelo, y eso es lo que lo hace "
             "raro y discutible: dilo de frente.",
             "Estas predicciones SÍ existen y están guardadas: aquí es legítimo "
-            "decir 'our model', 'our range'.",
+            "decir 'my model', 'my range' (primera persona: la cuenta es "
+            "de una persona).",
             "La imagen lleva la lista completa: el texto no la repite entera. "
             "Nombra dos o tres casos y di qué tienen en común o qué no "
             "esperaba el modelo, sin inventar la causa.",

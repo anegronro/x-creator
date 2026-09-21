@@ -1,4 +1,4 @@
-"""Comunicados oficiales de regulación: SEC, CFTC y Federal Register.
+"""Comunicados oficiales de regulación: SEC, CFTC, Fed, OCC y Federal Register.
 
 La cuenta quiere funcionar como un periodista: la noticia sale de la fuente
 primaria y se atribuye con nombre. Antes, los posts de regulación salían de
@@ -30,6 +30,22 @@ from email.utils import parsedate_to_datetime
 
 SEC_RSS = "https://www.sec.gov/news/pressreleases.rss"
 CFTC_RSS = "https://www.cftc.gov/RSS/RSSGP/rssgp.xml"
+# (agencia, url, cómo se llama el documento en el post). Añadidas el
+# 2026-09-21 para tener más volumen sin salir de la fuente primaria: los
+# comisionados de la SEC y los gobernadores de la Fed hablan de cripto mucho
+# más a menudo de lo que sus agencias emiten comunicados. Tesoro y FDIC no
+# tienen RSS (404); sus reglas llegan por el Federal Register.
+FUENTES_RSS = (
+    ("SEC", SEC_RSS, ""),
+    ("SEC", "https://www.sec.gov/news/speeches-statements.rss",
+     "SEC statement"),
+    ("CFTC", CFTC_RSS, "CFTC press release"),
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/press_all.xml",
+     "Federal Reserve press release"),
+    ("Federal Reserve", "https://www.federalreserve.gov/feeds/speeches.xml",
+     "Federal Reserve speech"),
+    ("OCC", "https://www.occ.gov/rss/occ_news.xml", "OCC news release"),
+)
 FEDREG_API = "https://www.federalregister.gov/api/v1/documents.json"
 
 # La SEC pide identificarse. Va el nombre del proyecto, no un correo: el
@@ -124,7 +140,7 @@ def _documento_sec(url: str) -> str:
     return f"SEC press release {m.group(1)}" if m else "SEC press release"
 
 
-def parse_rss(xml: str, agencia: str) -> list[Comunicado]:
+def parse_rss(xml: str, agencia: str, documento: str = "") -> list[Comunicado]:
     try:
         raiz = ET.fromstring(xml)
     except ET.ParseError as e:
@@ -136,12 +152,12 @@ def parse_rss(xml: str, agencia: str) -> list[Comunicado]:
         titulo = _limpio(item.findtext("title"))
         if not url or not titulo:
             continue
-        documento = (_documento_sec(url) if agencia == "SEC"
-                     else f"{agencia} press release")
+        doc = documento or (_documento_sec(url) if agencia == "SEC"
+                            else f"{agencia} press release")
         out.append(Comunicado(
             agencia=agencia, titulo=titulo,
             resumen=_limpio(item.findtext("description")), url=url,
-            fecha=_fecha_rss(item.findtext("pubDate")), documento=documento))
+            fecha=_fecha_rss(item.findtext("pubDate")), documento=doc))
     return out
 
 
@@ -173,13 +189,13 @@ def leer_todos(http=None) -> list[Comunicado]:
     cliente = http or httpx.Client(timeout=TIMEOUT,
                                    headers={"User-Agent": USER_AGENT})
     out: list[Comunicado] = []
-    for agencia, url in (("SEC", SEC_RSS), ("CFTC", CFTC_RSS)):
+    for agencia, url, documento in FUENTES_RSS:
         try:
             r = cliente.get(url)
             if r.status_code >= 400:
-                print(f"{agencia}: HTTP {r.status_code}", file=sys.stderr)
+                print(f"{agencia} ({url}): HTTP {r.status_code}", file=sys.stderr)
                 continue
-            out += parse_rss(r.text, agencia)
+            out += parse_rss(r.text, agencia, documento)
         except Exception as e:
             print(f"{agencia}: {type(e).__name__}: {e}", file=sys.stderr)
     try:
@@ -194,7 +210,8 @@ def leer_todos(http=None) -> list[Comunicado]:
             out += parse_federal_register(r.json())
     except Exception as e:
         print(f"Federal Register: {type(e).__name__}: {e}", file=sys.stderr)
-    return out
+    # La SEC publica lo mismo en dos feeds a veces: una sola vez por URL.
+    return list({c.url: c for c in out}.values())
 
 
 def a_titular(c: Comunicado):
