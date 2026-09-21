@@ -3739,3 +3739,89 @@ def test_publicar_bloquea_el_post_con_dos_cashtags():
                 kind="marcador")
     problemas = revisar_antes_de_publicar(item)
     assert any("cashtags" in p for p in problemas), problemas
+
+
+# --- Proveedor xAI -----------------------------------------------------------
+
+class _HttpFalso:
+    """Responde como la API de chat completions de xAI y guarda la petición."""
+
+    def __init__(self, contenido, finish="stop", status=200):
+        self.contenido, self.finish, self.status = contenido, finish, status
+        self.peticion = None
+
+    def post(self, url, json=None, headers=None):
+        import json as _json
+
+        self.peticion = {"url": url, "json": json, "headers": headers}
+        cuerpo = {"choices": [{"message": {"content": self.contenido},
+                               "finish_reason": self.finish}],
+                  "usage": {"prompt_tokens": 1000, "completion_tokens": 500}}
+
+        class R:
+            status_code = self.status
+            text = _json.dumps(cuerpo)
+
+            def json(self_inner):
+                return cuerpo
+        return R()
+
+
+def test_xai_parse_devuelve_el_modelo_pydantic_y_anota_el_gasto(tmp_path):
+    import json
+
+    from xcreator.generate import _Variants
+    from xcreator.llm import ClienteXAI
+
+    salida = {"variants": [{"approach": "a", "text": "$NVDA at 44x. NVDA.",
+                            "thread": [], "reply_hook": "h"}]}
+    http = _HttpFalso(json.dumps(salida))
+    registro = tmp_path / "uso.jsonl"
+    c = ClienteXAI("k", registro=registro, http=http)
+    r = c.messages.parse(model="claude-opus-5", max_tokens=100,
+                         system=[{"type": "text", "text": "SYS"}],
+                         messages=[{"role": "user", "content": "hola"}],
+                         output_format=_Variants)
+
+    assert r.parsed_output.variants[0].text.startswith("$NVDA")
+    cuerpo = http.peticion["json"]
+    # El id de Claude no viaja a xAI: manda el modelo del cliente.
+    assert cuerpo["model"] == "grok-4.7"
+    assert cuerpo["messages"][0] == {"role": "system", "content": "SYS"}
+    esquema = cuerpo["response_format"]["json_schema"]["schema"]
+    assert "$defs" not in json.dumps(esquema)
+    item = esquema["properties"]["variants"]["items"]
+    assert item["additionalProperties"] is False
+    assert set(item["required"]) == {"approach", "text", "thread", "reply_hook"}
+    linea = json.loads(registro.read_text())
+    # 1000 de entrada a $2/M y 500 de salida a $6/M.
+    assert linea["usd"] == 0.005
+
+
+def test_xai_corte_por_techo_se_marca_como_max_tokens():
+    from xcreator.llm import ClienteXAI
+
+    c = ClienteXAI("k", http=_HttpFalso("texto cortad", finish="length"))
+    r = c.messages.create(max_tokens=10,
+                          messages=[{"role": "user", "content": "x"}])
+    assert r.stop_reason == "max_tokens"
+    assert r.content[0].text == "texto cortad"
+
+
+def test_xai_error_http_no_se_traga():
+    import pytest
+
+    from xcreator.llm import ClienteXAI, LLMError
+
+    c = ClienteXAI("k", http=_HttpFalso("{}", status=402))
+    with pytest.raises(LLMError):
+        c.messages.create(messages=[{"role": "user", "content": "x"}])
+
+
+def test_proveedor_por_defecto_es_xai_si_hay_clave():
+    from xcreator.config import Settings, proveedor
+
+    assert proveedor(Settings(xai_api_key="k", anthropic_api_key="a")) == "xai"
+    assert proveedor(Settings(anthropic_api_key="a")) == "anthropic"
+    assert proveedor(Settings(xai_api_key="k", llm_proveedor="anthropic")) \
+        == "anthropic"

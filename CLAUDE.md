@@ -73,8 +73,9 @@ raro, es verificable, y atrae correcciones de gente que sabe.
 - API de X: pay-per-use desde feb 2026, sin free tier. $0.015 por post,
   **$0.20 si lleva link** (13x). Por eso el redactor tiene prohibido incluir
   URLs — y además los links hunden el alcance orgánico.
-- API de Anthropic: ~$0.02 por generación de 3 variantes. El Cerebro va
-  cacheado, así que repetir ángulo es casi gratis.
+- Modelo que redacta: **Grok 4.7 por la API de xAI** desde el 2026-09-21
+  (los créditos de Anthropic se acabaron y no se recargan). Unos 3 centavos
+  por llamada. `xc gasto` muestra lo gastado; `llm.py` es el adaptador.
 - Monetización: Premium activo + 500 seguidores **verificados** + 5M
   impresiones orgánicas en 3 meses, solo de usuarios Premium.
 

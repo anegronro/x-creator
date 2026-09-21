@@ -25,6 +25,13 @@ class Settings:
 
     anthropic_api_key: str | None = None
     anthropic_workspace_id: str | None = None
+    # xAI (Grok). Desde el 2026-09-21 es el proveedor por defecto: los
+    # créditos de Anthropic se acabaron y no se recargan. Con la clave
+    # puesta, redacta Grok; sin ella, se cae a Claude si hay clave.
+    xai_api_key: str | None = None
+    xai_modelo: str = "grok-4.7"
+    # "xai" o "anthropic". Vacío = xai si hay XAI_API_KEY, si no anthropic.
+    llm_proveedor: str = ""
     # Fuentes de datos de mercado (solo lectura). Nada de ejecución.
     fmp_api_key: str | None = None
     finnhub_api_key: str | None = None
@@ -100,6 +107,10 @@ class Settings:
         return self.root / "Contenido" / "x_ultimos.json"
 
     @property
+    def uso_llm_path(self) -> Path:
+        return self.root / "Contenido" / "uso_llm.jsonl"
+
+    @property
     def cola_path(self) -> Path:
         return self.root / "Contenido" / "cola.jsonl"
 
@@ -113,6 +124,7 @@ class Settings:
 
         return (
             f"Settings(anthropic_api_key={m(self.anthropic_api_key)}, "
+            f"xai_api_key={m(self.xai_api_key)}, "
             f"fmp_api_key={m(self.fmp_api_key)}, "
             f"telegram_bot_token={m(self.telegram_bot_token)}, "
             f"reportes_dir={self.reportes_dir}, root={self.root})"
@@ -132,6 +144,9 @@ def load_settings(env_file: Path | None = None) -> Settings:
     return Settings(
         anthropic_api_key=get("ANTHROPIC_API_KEY"),
         anthropic_workspace_id=get("ANTHROPIC_WORKSPACE_ID"),
+        xai_api_key=get("XAI_API_KEY"),
+        xai_modelo=get("XAI_MODELO") or "grok-4.7",
+        llm_proveedor=(get("LLM_PROVEEDOR") or "").lower(),
         fmp_api_key=get("FMP_API_KEY"),
         finnhub_api_key=get("FINNHUB_API_KEY"),
         fred_api_key=get("FRED_API_KEY"),
@@ -173,3 +188,27 @@ def anthropic_client(settings: Settings):
     return anthropic.Anthropic(
         api_key=settings.anthropic_api_key, default_headers=headers
     )
+
+
+def proveedor(settings: Settings) -> str:
+    """Qué modelo redacta: el elegido a mano, o xAI si hay clave."""
+    if settings.llm_proveedor in ("xai", "anthropic"):
+        return settings.llm_proveedor
+    return "xai" if settings.xai_api_key else "anthropic"
+
+
+def llm_client(settings: Settings):
+    """El cliente del modelo que redacta, o None si falta su clave.
+
+    Devuelve algo con la interfaz `messages.parse` / `messages.create` del
+    SDK de Anthropic, sea cual sea el proveedor: el resto del código no
+    necesita saber quién escribe.
+    """
+    if proveedor(settings) == "xai":
+        if not settings.xai_api_key:
+            return None
+        from xcreator.llm import ClienteXAI
+
+        return ClienteXAI(settings.xai_api_key, modelo=settings.xai_modelo,
+                          registro=settings.uso_llm_path)
+    return anthropic_client(settings)

@@ -715,6 +715,31 @@ Lo que haría distinto quien implemente esto de cero:
 
 ---
 
+### 17.1 Proveedor actual: xAI (Grok)
+
+Desde el 21 de septiembre de 2026 redacta **Grok 4.7** por la API de xAI
+(`POST https://api.x.ai/v1/chat/completions`, salida estructurada con
+`response_format` de tipo `json_schema` y `strict: true`). Precio: $2 por
+millón de tokens de entrada y $6 de salida, unos 3 centavos por llamada.
+
+`xcreator/llm.py` imita las dos llamadas del SDK de Anthropic que usa el
+código (`messages.parse` y `messages.create`), así que cambiar de proveedor
+no tocó ni un prompt ni una validación. Dos detalles del adaptador:
+
+- El esquema de pydantic se aplana (sin `$defs`) y se vuelve estricto: todo
+  objeto cerrado y todos sus campos obligatorios, aunque en pydantic tengan
+  valor por defecto.
+- `finish_reason: "length"` se traduce a `stop_reason: "max_tokens"`, que es
+  lo que mira el detector de truncamiento.
+
+Cada llamada deja una línea en `Contenido/uso_llm.jsonl` con tokens y costo.
+`xc gasto` lo resume por día.
+
+Selección: `LLM_PROVEEDOR` manda si está puesto; si no, xAI cuando existe
+`XAI_API_KEY` y Anthropic en caso contrario.
+
+---
+
 ## 18. Lo que el sistema no debe hacer nunca
 
 - No publicar sin aprobación humana mientras no haya evidencia de que

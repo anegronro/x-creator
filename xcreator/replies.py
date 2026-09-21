@@ -414,13 +414,13 @@ def draft_reply(
 
     brief = relevancia.brief
     if client is None:
-        from xcreator.config import anthropic_client
+        from xcreator.config import llm_client
 
-        client = anthropic_client(settings)
+        client = llm_client(settings)
         if client is None:
             return ReplyDraft(
                 texto="", que_aporta="", autor=mencion.autor, url=mencion.url,
-                declinado=True, motivo="sin ANTHROPIC_API_KEY o sin SDK",
+                declinado=True, motivo="sin clave del modelo (XAI_API_KEY o ANTHROPIC_API_KEY)",
                 model=modelo_usado,
             )
 
@@ -467,6 +467,8 @@ def draft_reply(
             f"nada."
         )
 
+    modelo_usado = (model or getattr(client, "modelo_por_defecto", None)
+                    or modelo_usado)
     resp = client.messages.parse(
         model=modelo_usado, max_tokens=16000,
         system=sistema,

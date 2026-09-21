@@ -700,11 +700,14 @@ def draft_posts(
     ver qué inventó el modelo es información útil para el revisor.
     """
     if client is None:
-        from xcreator.config import anthropic_client
+        from xcreator.config import llm_client
 
-        client = anthropic_client(settings)
+        client = llm_client(settings)
         if client is None:
             return []
+    # Con xAI el modelo lo decide el cliente: un id de Claude sería un 404,
+    # y el borrador tiene que registrar quién lo escribió de verdad.
+    model = model or getattr(client, "modelo_por_defecto", None) or MODEL
 
     from xcreator.cerebro import ANGULOS, metodologia
 

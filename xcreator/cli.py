@@ -249,7 +249,7 @@ def redactar(
 
     drafts = draft_posts(brief, s, lecciones=lecciones, n=n)
     if not drafts:
-        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
                     fg="red", err=True)
         raise typer.Exit(1)
 
@@ -334,7 +334,7 @@ def _redactar_planes(planes, q, s, *, lecciones, encolar: bool) -> None:
         elegido = next((d for d in drafts if d.valido), drafts[0])
         _mostrar_y_encolar(elegido, brief, q, s, encolar=encolar)
     if not hubo:
-        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
                     fg="red", err=True)
         raise typer.Exit(1)
 
@@ -458,7 +458,7 @@ def _redactar_regulacion(q, s, *, encolar: bool) -> None:
     # Dos variantes y se queda una: la segunda es repuesto de la primera.
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
-        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
                     fg="red", err=True)
         raise typer.Exit(1)
     _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
@@ -488,7 +488,7 @@ def _redactar_marcador(q, s, *, encolar: bool) -> None:
                f"{len(abajo)} por debajo y {len(arriba)} por encima.\n")
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
-        typer.secho("Sin borradores: falta ANTHROPIC_API_KEY o el SDK.",
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
                     fg="red", err=True)
         raise typer.Exit(1)
     _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
@@ -1296,6 +1296,25 @@ def _grafico_macro(brief, settings, destino, firma):
         formato={"pct": "pct", "pp": "pp"}.get(cfg.unidad, "num"),
         fuente=f"Data: FRED {cfg.serie}. Observed values, not a forecast.",
         firma=firma)
+
+
+@app.command("gasto")
+def gasto_cmd(dias: int = typer.Option(7, help="Cuántos días mostrar.")) -> None:
+    """Lo que ha costado el modelo que redacta, día a día."""
+    from datetime import date, timedelta
+
+    from xcreator.config import load_settings, proveedor
+    from xcreator.llm import gasto
+
+    s = load_settings()
+    typer.echo(f"Proveedor: {proveedor(s)}  modelo: {s.xai_modelo}")
+    total_n, total_usd = 0, 0.0
+    for k in range(dias - 1, -1, -1):
+        d = (date.today() - timedelta(days=k)).isoformat()
+        n, usd = gasto(s.uso_llm_path, d)
+        total_n, total_usd = total_n + n, total_usd + usd
+        typer.echo(f"  {d}  {n:>3} llamadas  ${usd:,.2f}")
+    typer.echo(f"Total: {total_n} llamadas, ${total_usd:,.2f}")
 
 
 @app.command("cola")
