@@ -60,7 +60,7 @@ _CONTEXTO_CRIPTO = re.compile(
 # Entidades concretas: reguladores, cámaras y leyes con nombre. Son lo que el
 # post tiene que nombrar, porque son lo que el lector reconoce.
 _ENTIDADES = re.compile(
-    r"\b(sec|cftc|occ|fdic|irs|doj|treasury|congress|senate|house|"
+    r"\b(sec|cftc|occ|fdic|irs|doj|treasury|congress|senate|house|fincen|ncua|"
     r"federal reserve|clarity act|genius act|stablecoin bill|"
     r"market structure bill|atkins|lummis)\b", re.IGNORECASE)
 
@@ -104,8 +104,8 @@ class Titular:
     horas: float | None
 
 
-def elegir_titular(candidatos: list[Titular],
-                   usados: set[str]) -> Titular | None:
+def elegir_titular(candidatos: list[Titular], usados: set[str], *,
+                   horas_max: float = HORAS_MAX_TITULAR) -> Titular | None:
     """El titular de regulación más fresco que no se haya usado ya.
 
     Frescura manda: es el mismo criterio que los replies, y por la misma
@@ -115,7 +115,7 @@ def elegir_titular(candidatos: list[Titular],
         t for t in candidatos
         if sujeto_del_titular(t.texto)
         and t.post_id not in usados
-        and (t.horas is None or t.horas <= HORAS_MAX_TITULAR)
+        and (t.horas is None or t.horas <= horas_max)
     ]
     buenos.sort(key=lambda t: t.horas if t.horas is not None else 99)
     return buenos[0] if buenos else None
@@ -129,7 +129,9 @@ def _limpiar_titular(texto: str) -> str:
     return re.sub(r"\s+", " ", t).strip()
 
 
-def brief_regulacion(titular: Titular, fmp_api_key: str | None) -> Brief:
+def brief_regulacion(titular: Titular, fmp_api_key: str | None, *,
+                     oficial: bool = False, documento: str = "",
+                     mencion: str = "") -> Brief:
     """El brief para un post propio sobre un titular de regulación.
 
     Las cifras permitidas son las del propio titular y, si nombra un activo
@@ -152,24 +154,57 @@ def brief_regulacion(titular: Titular, fmp_api_key: str | None) -> Brief:
                 ticker, facts = t, list(b.facts)
                 break
 
-    fuente = f"titular de {titular.autor}"
+    fuente = (f"comunicado oficial de {titular.autor}" if oficial
+              else f"titular de {titular.autor}")
     for v in sorted(set(_numeros_del_texto(limpio))):
         facts.append(Fact(f"cifra que aparece en el titular", v, "num", fuente))
 
-    return Brief(
-        kind="regulacion",
-        ticker=ticker,
-        sujeto=sujeto,
-        angulo="riesgo",
-        angle="Qué implica esta noticia de regulación que el titular no dice",
-        facts=facts,
-        context=[
+    if oficial:
+        # Fuente primaria: lo que dice el comunicado ES el hecho, y se
+        # atribuye como lo haría un periodista. Nada de "reportedly".
+        encabezado = [
+            f"COMUNICADO OFICIAL de {titular.autor} ({documento or 'documento oficial'}): "
+            f"\"{limpio}\"",
+            f"Es la fuente primaria: puedes afirmar lo que el comunicado dice "
+            f"como hecho, SIEMPRE atribuido. Escribe como un periodista: "
+            f"\"the {titular.autor} said in a release\", \"per the "
+            f"{titular.autor}\", \"in {documento or 'the filing'}\". El "
+            f"lector tiene que poder encontrar el documento sin link: nombra "
+            f"la agencia y, si cabe, el número del documento.",
+            "Atribuir no es copiar: no repitas el título entero. Di qué hizo "
+            "la agencia en una frase y dedica el resto al criterio.",
+        ]
+        if mencion:
+            encabezado.append(
+                f"MENCIONA a la agencia con su cuenta de X: {mencion}. Dentro "
+                f"de una frase (\"{mencion} said in a release...\"), NUNCA "
+                f"como primera palabra del post: X esconde los posts que "
+                f"empiezan por @ como si fueran respuestas.")
+        encabezado.append(
+            "SIN enlace: un link cuesta 13x y X le quita alcance. La fuente "
+            "se encuentra por su nombre: la agencia con su @ y, si cabe, el "
+            f"número del documento ({documento or 'el documento'}).")
+    else:
+        encabezado = [
             f"NOTICIA, tal como la publicó {titular.autor} (sin verificar): "
             f"\"{limpio}\"",
             "Es un titular de una cuenta de noticias rápidas, no un hecho "
             "comprobado. Si lo mencionas, preséntalo como informado "
             "(\"reportedly\", \"per reports\"), nunca como confirmado.",
-            "NO afirmes NADA que el titular no diga: ni qué contiene el "
+        ]
+
+    return Brief(
+        kind="regulacion",
+        ticker=ticker,
+        sujeto=sujeto,
+        atribucion=((mencion,) if mencion else (titular.autor,)) if oficial
+        else (),
+        angulo="riesgo",
+        angle="Qué implica esta noticia de regulación que el titular no dice",
+        facts=facts,
+        context=[
+            *encabezado,
+            "NO afirmes NADA que la fuente no diga: ni qué contiene el "
             "proyecto de ley, ni qué votó quién, ni qué pasará después. No lo "
             "sabes. Si tu argumento necesita un hecho que no está arriba, "
             "haz otro argumento.",

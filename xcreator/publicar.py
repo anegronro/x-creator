@@ -24,7 +24,7 @@ import httpx
 
 from xcreator.generate import (
     MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cashtags_de_mas,
-    cifras_mal_formateadas,
+    cifras_mal_formateadas, falta_atribucion,
     es_ingles, falta_sujeto, falta_ticker, lleva_raya, validate_numbers,
 )
 
@@ -95,6 +95,13 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
             problemas.append(f"pieza {i} se pasa por {len(p) - MAX_CHARS} caracteres")
         if not es_ingles(p):
             problemas.append(f"pieza {i} no está en inglés")
+        # Un post que EMPIEZA por @ X lo trata como respuesta: solo lo ven
+        # quienes siguen a las dos cuentas. Mencionar a @SECGov sí, pero
+        # nunca como primera palabra.
+        if p.lstrip().startswith("@"):
+            problemas.append(
+                f"pieza {i} empieza por una mención: X la esconde como si "
+                f"fuera una respuesta. La @ va dentro de la frase")
         if tiene_link(p) and not permitir_link:
             problemas.append(
                 f"pieza {i} lleva un link (cuesta ${COSTO_POST_CON_LINK} en vez "
@@ -177,8 +184,14 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
             problemas.append(
                 f"el post al que responde tiene {horas:.0f} horas (límite "
                 f"{HORAS_MAX_PARA_RESPONDER}): la conversación ya pasó")
+    # Periodismo: el hecho va atribuido a quien lo publicó, con su @.
+    atribucion = getattr(item, "atribucion", None) or []
+    if atribucion and falta_atribucion(entero, atribucion):
+        problemas.append(
+            f"no atribuye la fuente: tiene que nombrar a "
+            f"{' o '.join(atribucion)}")
     if numeros_permitidos is not None:
-        malos = validate_numbers("\n".join(piezas), numeros_permitidos)
+        malos = validate_numbers(entero, numeros_permitidos)
         if malos:
             problemas.append(f"cifras sin fuente en el texto final: {malos}")
     return problemas

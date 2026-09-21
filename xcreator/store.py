@@ -77,6 +77,9 @@ class Item:
     # es de los replies, y el publicador bloquea todo lo que tenga url_origen
     # de más de 12 horas. Guardarlo ahí habría vuelto impublicable el post.
     fuente: str = ""
+    # A quién hay que atribuir el hecho ("@SECGov"). La revisión de
+    # publicación exige que el texto final lo nombre.
+    atribucion: list[str] = field(default_factory=list)
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -165,6 +168,7 @@ class Queue:
             frases_repetidas=list(getattr(draft, "frases_repetidas", [])),
             partidismo=list(getattr(draft, "partidismo", [])),
             fuente=getattr(draft, "fuente", ""),
+            atribucion=list(getattr(draft, "atribucion", []) or []),
         )
         items = self.load()
         items.append(item)

@@ -462,11 +462,17 @@ Reglas transversales que costaron caro:
 - **Guarda de serie plana.** El percentil es relativo: con un recorrido
   minúsculo cualquier variación parece un extremo histórico. Si el rango
   completo es menor al 10% del nivel, no hay noticia, hay histórico roto.
-- **Regulación va anclada a un titular real.** En un reply, el post ajeno
-  pone la noticia; en un post propio no hay nadie que la ponga. Si el modelo
-  escribe "the Senate passed the Clarity Act" sin fuente, es una noticia
-  inventada publicada con el nombre del usuario. El titular se cita como
-  informado ("reportedly"), nunca como verificado, y caduca a las 12 horas.
+- **Regulación sale de fuentes oficiales, como un periodista.** Desde el 21
+  de septiembre de 2026 los posts de regulación salen de los comunicados de
+  la SEC, la CFTC y el Federal Register (gratis, sin clave). El post atribuye
+  el hecho a la agencia con su cuenta de X (@SECGov, @CFTC, @FDICgov,
+  @USOCC, @federalreserve, @USTreasury, @IRSnews, @FinCENnews, @TheNCUA,
+  todas comprobadas) y con el número del documento ("SEC press release
+  2026-90"), para que cualquiera lo encuentre. **Sin enlace:** cuesta 13x y
+  X le quita alcance. La @ nunca va como primera palabra: X esconde esos
+  posts como si fueran respuestas. Sin comunicado oficial de cripto en las
+  últimas 72 horas, el turno no publica; el respaldo con titulares de X
+  existe pero va apagado (`REGULACION_RESPALDO_X`).
 - **El marcador es el formato más compartible.** Lista de 5 y 5 en una sola
   imagen: las que quedaron por debajo del escenario bajo y las que se
   fueron por encima del alto. Publicar dónde falló el propio modelo es

@@ -3225,7 +3225,7 @@ def test_el_brief_no_deja_inventar_la_noticia():
         None)
     ctx = " ".join(b.context).lower()
     assert "sin verificar" in ctx
-    assert "no afirmes nada que el titular no diga" in ctx
+    assert "no afirmes nada que la fuente no diga" in ctx
     assert "reportedly" in ctx
     assert "just in" not in b.context[0].lower(), "se limpia el titular"
     assert "clarity act" in b.sujeto
@@ -3711,10 +3711,12 @@ def test_la_cita_y_el_post_de_regulacion_no_usan_el_mismo_titular():
     """Saldrían dos posts del perfil sobre la misma noticia."""
     import inspect
 
-    from xcreator.cli import _redactar_regulacion, citar
+    from xcreator.cli import _regulacion_desde_x, citar
 
+    # Solo el respaldo de X puede chocar con una cita: los comunicados
+    # oficiales no son posts de X y no se citan.
     assert "fuentes_usadas()" in inspect.getsource(citar)
-    reg = inspect.getsource(_redactar_regulacion)
+    reg = inspect.getsource(_regulacion_desde_x)
     assert '"cita"' in reg and "fuentes_usadas()" in reg
 
 
@@ -3855,3 +3857,98 @@ def test_brief_macro_guarda_la_serie_como_motivo():
         import pytest
         pytest.skip("Lectura necesita campos que este test no construye")
     assert b.motivo == f"macro:{cfg.serie}"
+
+
+
+# --- Fuentes oficiales ---------------------------------------------------------
+
+_RSS_SEC = '''<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0"><channel><title>Press Releases</title>
+<item>
+  <title>  SEC Issues “Innovation Exemption” to Facilitate the Trading of Tokenized NMS Stock
+</title>
+  <link>https://www.sec.gov/newsroom/press-releases/2026-90-sec-issues-innovation-exemption</link>
+  <description>Facilitating onchain trading of certain tokenized stocks.</description>
+  <pubDate>Thu, 17 Sep 2026 08:55:00 -0400</pubDate>
+</item>
+<item>
+  <title>SEC Proposes Rescission of Shareholder Proposal Rule</title>
+  <link>https://www.sec.gov/newsroom/press-releases/2026-89-sec-proposes-rescission</link>
+  <description>Rule 14a-8.</description>
+  <pubDate>Wed, 16 Sep 2026 10:00:00 -0400</pubDate>
+</item>
+</channel></rss>'''
+
+
+def test_rss_de_la_sec_da_el_numero_del_comunicado():
+    from xcreator.fuentes_oficiales import parse_rss
+
+    cs = parse_rss(_RSS_SEC, "SEC")
+    assert len(cs) == 2
+    assert cs[0].documento == "SEC press release 2026-90"
+    assert cs[0].handle == "@SECGov"
+    assert cs[0].titulo.startswith("SEC Issues")
+    assert cs[0].fecha.tzinfo is not None
+
+
+def test_solo_el_comunicado_de_cripto_es_tema_de_regulacion():
+    from xcreator.fuentes_oficiales import a_titular, parse_rss
+    from xcreator.regulacion import elegir_titular
+
+    ts = [a_titular(c) for c in parse_rss(_RSS_SEC, "SEC")]
+    for t in ts:
+        t.horas = 5.0
+    elegido = elegir_titular(ts, set(), horas_max=72)
+    # El de la regla de accionistas no es cripto; el de tokenización sí.
+    assert elegido is not None and "Tokenized" in elegido.texto
+    # Ya usado: no se repite.
+    assert elegir_titular(ts, {elegido.post_id}, horas_max=72) is None
+
+
+def test_federal_register_se_atribuye_a_la_agencia():
+    from xcreator.fuentes_oficiales import parse_federal_register
+
+    cs = parse_federal_register({"results": [{
+        "title": "Regulation Crypto Assets", "abstract": "The Commission...",
+        "html_url": "https://www.federalregister.gov/documents/2026/08/21/x/regulation-crypto-assets",
+        "publication_date": "2026-08-21", "type": "Proposed Rule",
+        "agencies": [{"name": "Securities and Exchange Commission"}]}]})
+    assert cs[0].agencia == "SEC" and cs[0].handle == "@SECGov"
+    assert cs[0].documento == "Federal Register proposed rule"
+
+
+def test_brief_oficial_atribuye_con_la_arroba_y_sin_reportedly():
+    from xcreator.fuentes_oficiales import a_titular, parse_rss
+    from xcreator.regulacion import brief_regulacion
+
+    c = parse_rss(_RSS_SEC, "SEC")[0]
+    b = brief_regulacion(a_titular(c), None, oficial=True,
+                         documento=c.documento, mencion=c.handle)
+    ctx = " ".join(b.context)
+    assert b.atribucion == ("@SECGov",)
+    assert "COMUNICADO OFICIAL" in ctx and "reportedly" not in ctx.lower()
+    assert "SIN enlace" in ctx
+
+
+def test_falta_atribucion_reconoce_la_arroba():
+    from xcreator.generate import falta_atribucion
+
+    assert not falta_atribucion("Per @SECGov, tokenized stocks trade.", ["@SECGov"])
+    assert falta_atribucion("The regulator said tokenized stocks trade.", ["@SECGov"])
+    assert not falta_atribucion("anything", [])
+
+
+def test_publicar_bloquea_post_que_empieza_por_arroba_o_sin_fuente():
+    from xcreator.publicar import revisar_antes_de_publicar
+    from xcreator.store import Item
+
+    base = dict(id="x", creado="2026-09-21T12:00:00+00:00", estado="programado",
+                kind="regulacion", atribucion=["@SECGov"])
+    empieza = Item(texto="@SECGov just opened the door to tokenized stocks.", **base)
+    assert any("empieza por una mención" in p
+               for p in revisar_antes_de_publicar(empieza))
+    sin = Item(texto="The regulator just opened the door to tokenized stocks.", **base)
+    assert any("no atribuye la fuente" in p for p in revisar_antes_de_publicar(sin))
+    bien = Item(texto="Tokenized stocks got a green light from @SECGov today.", **base)
+    assert not any("atribuye" in p or "mención" in p
+                   for p in revisar_antes_de_publicar(bien))

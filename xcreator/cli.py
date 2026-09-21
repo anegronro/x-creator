@@ -411,8 +411,56 @@ def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
 
 
 def _redactar_regulacion(q, s, *, encolar: bool) -> None:
-    """Post propio anclado a un titular real de regulación de cripto."""
+    """Post propio de regulación de cripto, de fuente oficial.
+
+    Primero SEC, CFTC y Federal Register: fuente primaria, gratis y
+    atribuible con nombre y @. Los titulares de X solo si se activó
+    REGULACION_RESPALDO_X; si no, sin comunicado fresco no hay post.
+    """
+    from xcreator.fuentes_oficiales import (
+        HORAS_MAX_OFICIAL, a_titular, leer_todos,
+    )
+    from xcreator.regulacion import brief_regulacion, elegir_titular
+
+    tocados = q.fuentes_usadas()
+    comunicados = leer_todos()
+    por_clave = {c.clave: c for c in comunicados}
+    oficial = elegir_titular([a_titular(c) for c in comunicados], tocados,
+                             horas_max=HORAS_MAX_OFICIAL)
+    typer.echo(f"{len(comunicados)} comunicados oficiales leídos "
+               f"(SEC, CFTC, Federal Register). Gasto: $0.000")
+    if oficial is not None:
+        c = por_clave[oficial.post_id]
+        typer.echo(f"Fuente oficial ({oficial.horas:.0f}h, {c.documento}, "
+                   f"{c.handle or c.agencia}): {c.titulo[:110]}\n")
+        brief = brief_regulacion(oficial, s.fmp_api_key, oficial=True,
+                                 documento=c.documento, mencion=c.handle)
+        brief.fuente = c.url
+        _redactar_y_encolar_regulacion(q, s, brief, encolar=encolar)
+        return
+    if not s.regulacion_respaldo_x:
+        typer.secho("Ningún comunicado oficial de cripto fresco y sin usar. "
+                    "Sin fuente oficial no hay post (REGULACION_RESPALDO_X "
+                    "está apagado).", fg="yellow")
+        return
+    _regulacion_desde_x(q, s, encolar=encolar)
+
+
+def _redactar_y_encolar_regulacion(q, s, brief, *, encolar: bool) -> None:
     from xcreator.generate import draft_posts
+
+    # Dos variantes y se queda una: la segunda es repuesto de la primera.
+    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
+                    "o el modelo no respondió.", fg="red", err=True)
+        raise typer.Exit(1)
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
+
+
+def _regulacion_desde_x(q, s, *, encolar: bool) -> None:
+    """Respaldo: titular de una cuenta de cripto de la watchlist (sin verificar)."""
     from xcreator.publicar import edad_horas
     from xcreator.regulacion import Titular, brief_regulacion, elegir_titular
     from xcreator.watchlist import Watchlist
@@ -461,15 +509,7 @@ def _redactar_regulacion(q, s, *, encolar: bool) -> None:
                f"{titular.texto[:110]}\n")
     brief = brief_regulacion(titular, s.fmp_api_key)
     brief.fuente = titular.url
-
-    # Dos variantes y se queda una: la segunda es repuesto de la primera.
-    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
-    if not drafts:
-        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
-                    fg="red", err=True)
-        raise typer.Exit(1)
-    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
-                       brief, q, s, encolar=encolar)
+    _redactar_y_encolar_regulacion(q, s, brief, encolar=encolar)
 
 
 def _redactar_marcador(q, s, *, encolar: bool) -> None:

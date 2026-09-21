@@ -113,6 +113,11 @@ clauses. Use a full stop, a comma or a colon. Hyphens inside a word are \
 fine and expected ("10-year", "high-yield", "mid-range").
 7. Numbers follow English convention: comma for thousands and a full stop \
 for decimals (79,900 and 10.99). Never the other way round.
+8. Attribute like a journalist. When the brief names who published the fact \
+(an agency, a data source), say it in the post: "the SEC said in a release", \
+"per FRED data", "in SEC press release 2026-90". The reader must be able to \
+find the source without a link. Never attribute to anyone the brief does \
+not name.
 
 How to earn replies (this is what gets paid):
 - Take a position, then show the number that supports it. A post with no \
@@ -363,6 +368,22 @@ def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     return not any(a.lower() in t for a in alias)
 
 
+def falta_atribucion(texto: str, fuentes) -> bool:
+    """True si el post no nombra a ninguna de las fuentes del hecho.
+
+    La cuenta publica como un periodista: el hecho va atribuido a quien lo
+    publicó. Sin link (13x de costo), nombrar la fuente es la única forma de
+    que el lector la encuentre. Con que aparezca una basta.
+    """
+    if not fuentes:
+        return False
+    t = texto.lower()
+    # Sin \b delante: "@secgov" empieza por un carácter que no es de palabra
+    # y \b no casaría detrás de un espacio.
+    return not any(re.search(rf"(?<![\w@]){re.escape(f.lower())}(?!\w)", t)
+                   for f in fuentes)
+
+
 def falta_ticker(texto: str, ticker: str) -> list[str]:
     """Qué formas del ticker faltan. Lista vacía = están las dos.
 
@@ -452,6 +473,9 @@ class Draft:
     partidismo: list[str] = field(default_factory=list)
     # El titular del que salió un post de regulación, para no repetirlo.
     fuente: str = ""
+    # A quién hay que atribuir el hecho, y si el texto lo hizo.
+    atribucion: list[str] = field(default_factory=list)
+    sin_atribucion: bool = False
 
     @property
     def valido(self) -> bool:
@@ -467,6 +491,7 @@ class Draft:
             and not self.cifras_mal
             and not self.frases_repetidas
             and not self.partidismo
+            and not self.sin_atribucion
         )
 
     @property
@@ -790,6 +815,9 @@ def draft_posts(
                 ticker=brief.ticker,
                 kind=brief.kind,
                 motivo=getattr(brief, "motivo", ""),
+                atribucion=list(getattr(brief, "atribucion", ()) or ()),
+                sin_atribucion=falta_atribucion(
+                    "\n".join(piezas), getattr(brief, "atribucion", ())),
                 model=model or MODEL,
                 numeros_no_justificados=validate_numbers("\n".join(piezas), allowed),
                 exceso_caracteres=exceso,

@@ -76,6 +76,11 @@ class Settings:
     replies_opinion_por_dia: int = 1
     # Y solo a posts recientes: a las tres horas la conversación ya se movió.
     horas_frescura_reply: float = 3.0
+    # Los posts de regulación salen de fuentes OFICIALES (SEC, CFTC, Federal
+    # Register). Con esto en false, sin comunicado oficial fresco no hay
+    # post: nada de titulares de segunda mano. Angel lo quiere así desde el
+    # 2026-09-21: "quiero ser como un periodista".
+    regulacion_respaldo_x: bool = False
     # Solo UNA máquina puede hablar con Telegram. Dos instancias con el mismo
     # bot se roban los updates (el primero que llega los consume) y cada una
     # busca el borrador en SU cola: aprobar en el teléfono un borrador de la
@@ -163,6 +168,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         replies_por_dia=int(get("REPLIES_POR_DIA") or 6),
         replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 1),
         horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
+        regulacion_respaldo_x=(get("REGULACION_RESPALDO_X") or "false").lower()
+        in ("true", "1", "si", "sí", "yes"),
         telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
         not in ("false", "0", "no"),
         telegram_bot_token=get("TELEGRAM_X_BOT_TOKEN"),

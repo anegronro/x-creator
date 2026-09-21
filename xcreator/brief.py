@@ -80,6 +80,11 @@ class Brief:
     # ajeno en un post de regulación. Se guarda para no escribir dos veces
     # del mismo, no se publica.
     fuente: str = ""
+    # Quién publicó el hecho, como lo nombraría un periodista ("SEC",
+    # "FRED"). Si no está vacío, el post TIENE que nombrar al menos uno: la
+    # credibilidad de la cuenta es que cualquiera pueda ir a la fuente, y sin
+    # link (13x de costo) la única forma es nombrarla.
+    atribucion: tuple[str, ...] = ()
 
     @property
     def brief_id(self) -> str:
