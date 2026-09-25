@@ -135,6 +135,14 @@ case "${1:-}" in
     registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
     exit $codigo
     ;;
+  finde)
+    # Sábado y domingo la bolsa está cerrada, pero el marcador de cada tesis
+    # sigue igual de vigente y el fin de semana es cuando la gente lee con
+    # calma. Cuatro empresas, no diez: sin sesión no hay novedad de precio.
+    salida=$("$XC" redactar --auto --n 4 2>&1); codigo=$?
+    registrar "finde: $(echo "$salida" | grep -v '^live_price' | tail -5)"
+    exit $codigo
+    ;;
   personal)
     # Un post de OPINIÓN de Angel, sin cifras y en positivo. Sale solo, tres
     # veces al día. Es lo que mejor le funciona: sus tres posts con más
