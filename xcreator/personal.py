@@ -42,10 +42,10 @@ PERFIL = """Angel: trader minorista de Puerto Rico, optimista por convicción.
 - No es un gurú ni vende señales. Habla como alguien que está en la trinchera
   y disfruta el proceso."""
 
-# Cada cuánto puede repetirse una misma semilla, en días. Con doce semillas y
-# tres posts diarios, cuatro días reparte el catálogo sin que se note el
-# turno.
-DESCANSO_DIAS = 4
+# Cada cuánto puede repetirse una misma semilla, en días. Con nueve posts de
+# opinión al día, dos días de descanso y 30 semillas de semana (18 de finde)
+# reparten el catálogo sin que un turno se quede sin tema.
+DESCANSO_DIAS = 2
 
 
 @dataclass(frozen=True)
@@ -144,6 +144,25 @@ SEMILLAS: tuple[Semilla, ...] = (
             "What would you still do if nobody were watching?", finde=True),
     Semilla("humildad", "staying small while things go well",
             "What keeps you humble on a good week?", finde=True),
+    Semilla("perdonar", "letting go of something you were carrying",
+            "What did you stop carrying this week?", finde=True),
+    Semilla("hijos", "what you want your kids to remember",
+            "What do you want them to remember about you?", finde=True),
+    Semilla("raices", "where you come from and who paid for it",
+            "Who worked so you could do what you do?", finde=True),
+    Semilla("silencio", "a morning without the phone",
+            "What do you hear when the phone is off?", finde=True),
+    Semilla("celebrar", "celebrating other people's wins out loud",
+            "Whose win are you happy about this week?", finde=True),
+    Semilla("segundas", "second chances, given and taken",
+            "Who gave you a second chance?", finde=True),
+    Semilla("generosidad", "giving without keeping score",
+            "What did you give away and never think about again?",
+            finde=True),
+    Semilla("paz", "peace that does not depend on the week going well",
+            "What would still be fine if the week went badly?", finde=True),
+    Semilla("presencia", "being where your feet are",
+            "When were you last fully in the room?", finde=True),
 )
 
 
