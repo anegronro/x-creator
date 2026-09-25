@@ -469,7 +469,7 @@ empresa, que es lo contrario de la variedad que se buscaba.
 | `regulacion` | un titular real y fresco de una cuenta vigilada | afirmar nada que el titular no diga; partidismo |
 | `marcador` | todas las predicciones vivas | explicar la causa del movimiento |
 | `cita` | un post ajeno con conversación | (se pega a mano, no sale por API) |
-| `personal` | nada: solo la postura declarada de Angel y una semilla temática que rota | cualquier cifra (la lista de permitidos está vacía), la negatividad, la política y el consejo de inversión |
+| `personal` | nada: solo la postura declarada de Angel y una semilla temática que rota. Entre semana, 30 semillas de mercado y vida; sábado y domingo, solo las 9 de familia, fe y descanso | cualquier cifra (la lista de permitidos está vacía), la negatividad, la política y el consejo de inversión |
 | `idea` | una nota que Angel manda al bot de Telegram | añadir cualquier cifra, nombre, noticia o fuente que la nota no traiga |
 | `sistema` | el historial de git y el registro de gasto del propio agente | hablar de servidores, rutas o proveedores; prometer resultados que la cuenta no tiene |
 
