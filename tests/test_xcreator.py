@@ -3836,9 +3836,11 @@ def test_espaciado_no_se_salta_por_un_reply_aprobado():
     """Un reply aprobado en la cola dejaba salir posts cada 30 minutos."""
     from xcreator.store import ESPACIADO_MINUTOS, HOLGURA_MINUTOS
 
-    assert ESPACIADO_MINUTOS == 45
-    # A los 44.95 min del post anterior el turno ya cuenta como cumplido.
-    assert not (44.95 < ESPACIADO_MINUTOS - HOLGURA_MINUTOS)
+    # Unos segundos antes del turno ya cuenta como cumplido: el cron arranca
+    # a :00:05 y el post anterior quedó marcado a :00:08.
+    assert not (ESPACIADO_MINUTOS - 0.05 < ESPACIADO_MINUTOS - HOLGURA_MINUTOS)
+    # Y medio turno antes, no.
+    assert ESPACIADO_MINUTOS / 2 < ESPACIADO_MINUTOS - HOLGURA_MINUTOS
 
 
 def test_brief_macro_guarda_la_serie_como_motivo():

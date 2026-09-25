@@ -26,9 +26,10 @@ MINUTOS_DE_GRACIA = 45
 # aviso de Telegram prometía "sale en 45 min" a los tres borradores del día
 # sin saber que el publicador saca uno cada hora y media. Una constante en dos
 # sitios acaba desincronizada: aquí manda.
-# 90 hasta el 2026-09-21; bajado a 45 al duplicar el contenido diario
-# (16 posts entre semana). Con 90 no cabían más de 8 en la ventana.
-ESPACIADO_MINUTOS = 45
+# 90 -> 45 (2026-09-21, contenido doble) -> 30 (2026-09-25, seis posts de
+# opinión al día). La cola creaba 17 posts propios al día y solo salían 12:
+# la ventana estaba llena. Con 30 minutos y la ventana ensanchada caben 25.
+ESPACIADO_MINUTOS = 30
 # Cada cuántos minutos corre `publicar` en el cron. La proyección redondea a
 # este paso. TIENE que coincidir con el `*/15` del crontab.
 PASO_CRON_MINUTOS = 15
@@ -43,8 +44,9 @@ HOLGURA_MINUTOS = 2
 # contenido y reintentar solo sirve para que no salga nada detrás.
 MAX_FALLOS_PUBLICAR = 3
 # La ventana de publicación, en horas UTC. TIENE que coincidir con la línea
-# `*/15 12-23 * * * cron.sh publicar` del crontab.
-VENTANA_UTC = (12, 23)
+# `*/15 11-23 * * * cron.sh publicar` del crontab. Empieza a las 7 AM de
+# Puerto Rico: una hora más de ventana son dos posts más al día.
+VENTANA_UTC = (11, 23)
 
 
 @dataclass
