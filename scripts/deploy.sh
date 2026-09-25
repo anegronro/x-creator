@@ -12,6 +12,11 @@ set -euo pipefail
 VPS="${VPS:-root@100.105.244.125}"
 RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 
+# El VPS no tiene repo (se copia el código, no el .git), así que el historial
+# viaja como archivo: es la materia prima del post semanal de bitácora.
+echo "-> historial de cambios para la bitácora"
+git -C "$RAIZ" log -60 --pretty=format:'%h|%ad|%s' --date=short > "$RAIZ/CAMBIOS.txt"
+
 echo "-> subiendo código a $VPS"
 rsync -az --delete \
   --exclude '.venv' --exclude '__pycache__' --exclude '.pytest_cache' \

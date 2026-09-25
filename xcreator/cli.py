@@ -150,6 +150,10 @@ def redactar(
         False, help="Post propio sobre un titular reciente de regulación de cripto."),
     marcador: bool = typer.Option(
         False, help="Marcador semanal: qué acciones se salieron de su rango."),
+    sistema: bool = typer.Option(
+        False, help="Bitácora semanal: qué cambió en el agente y qué costó."),
+    idea: str = typer.Option(
+        "", help="Una nota tuya, en el idioma que sea: sale un post con tu voz."),
 ) -> None:
     """Redacta variantes desde los datos del motor y las deja en la cola."""
     from xcreator.brief import load_briefs
@@ -173,6 +177,20 @@ def redactar(
 
     if marcador:
         _redactar_marcador(q, s, encolar=encolar)
+        return
+
+    if sistema:
+        _redactar_bitacora(q, s, encolar=encolar)
+        return
+
+    if idea:
+        from xcreator.idea import brief_idea, ticker_de_la_nota
+
+        brief = brief_idea(idea, ticker_de_la_nota(idea))
+        for d in draft_posts(brief, s, n=n, recientes=q.textos_recientes()):
+            _mostrar_y_encolar(d, brief, q, s, encolar=False)
+            if encolar:
+                typer.echo(f"  -> cola id {q.add(d, estado='pendiente').id}")
         return
 
     lecciones = []
@@ -510,6 +528,33 @@ def _regulacion_desde_x(q, s, *, encolar: bool) -> None:
     brief = brief_regulacion(titular, s.fmp_api_key)
     brief.fuente = titular.url
     _redactar_y_encolar_regulacion(q, s, brief, encolar=encolar)
+
+
+def _redactar_bitacora(q, s, *, encolar: bool) -> None:
+    """Construir en público: qué cambió esta semana en el agente y qué costó."""
+    from xcreator.bitacora import (
+        brief_bitacora, gasto_semanal, leer_cambios, publicados_semana,
+    )
+    from xcreator.generate import draft_posts
+
+    cambios = leer_cambios(s.root / "CAMBIOS.txt")
+    llamadas, usd = gasto_semanal(s.uso_llm_path)
+    propios, replies = publicados_semana(q.load())
+    typer.echo(f"Semana: {len(cambios)} cambios, {propios} posts propios, "
+               f"{replies} replies, ${usd:.2f} de modelo en {llamadas} llamadas")
+    brief = brief_bitacora(cambios, llamadas, usd, propios, replies)
+    if brief is None:
+        typer.secho("Nada que contar esta semana (sin cambios o sin posts). "
+                    "Una bitácora vacía es relleno.", fg="yellow")
+        return
+    typer.echo(f"Ángulo: {brief.angle}\n")
+    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
+                    "o el modelo no respondió.", fg="red", err=True)
+        raise typer.Exit(1)
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
 
 
 def _redactar_marcador(q, s, *, encolar: bool) -> None:
@@ -1619,14 +1664,30 @@ def tg_enviar(limite: int = typer.Option(10, help="Máximo de borradores.")) -> 
                 "Nada nuevo que enviar.", fg="green" if n else None)
 
 
+def _redactar_desde_nota(q, s, nota: str) -> list[str]:
+    """Convierte una nota de Angel en borradores. Devuelve sus ids."""
+    from xcreator.generate import draft_posts
+    from xcreator.idea import brief_idea, ticker_de_la_nota
+
+    brief = brief_idea(nota, ticker_de_la_nota(nota))
+    ids = []
+    for d in draft_posts(brief, s, n=2, recientes=q.textos_recientes()):
+        # Pendiente, nunca programado: es la voz de Angel y la aprueba él.
+        # Un post suyo que sale solo porque se le olvidó mirarlo es
+        # exactamente lo contrario de lo que pidió.
+        ids.append(q.add(d, estado="pendiente").id)
+    return ids
+
+
 @tg.command("escuchar")
 def tg_escuchar() -> None:
-    """Aplica los botones que tocaste. Pensado para cron cada pocos minutos."""
+    """Aplica los botones que tocaste y convierte tus notas en borradores."""
     from xcreator.telegram import TelegramError, procesar_updates
 
-    q, _, b, est = _bot()
+    q, s, b, est = _bot()
     try:
-        log = procesar_updates(q, b, est)
+        log = procesar_updates(q, b, est,
+                               redactar_idea=lambda n: _redactar_desde_nota(q, s, n))
     except TelegramError as e:
         typer.secho(str(e), fg="red", err=True)
         raise typer.Exit(1)

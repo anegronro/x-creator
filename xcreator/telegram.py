@@ -402,8 +402,14 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
     return n
 
 
-def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
-    """Aplica los toques de botón y las ediciones. Devuelve un log legible."""
+def procesar_updates(queue, bot: Bot, estado: Estado,
+                     redactar_idea=None) -> list[str]:
+    """Aplica los toques de botón, las ediciones y tus ideas sueltas.
+
+    `redactar_idea(nota) -> list[str]` es opcional y se inyecta desde el CLI:
+    así este módulo no sabe nada del modelo ni de la cola de generación, y se
+    puede probar sin red. Devuelve un log legible.
+    """
     st = estado.load()
     log: list[str] = []
     updates = bot.updates(st.get("offset"))
@@ -414,7 +420,7 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
         # detrás en la misma tanda. El offset ya avanzó, así que tampoco se
         # reprocesa en bucle.
         try:
-            _procesar_uno(up, queue, bot, st, log)
+            _procesar_uno(up, queue, bot, st, log, redactar_idea)
         except Exception as e:  # noqa: BLE001 - robustez deliberada
             log.append(f"update {up.get('update_id')} falló: {e}")
 
@@ -422,7 +428,8 @@ def procesar_updates(queue, bot: Bot, estado: Estado) -> list[str]:
     return log
 
 
-def _procesar_uno(up: dict, queue, bot: Bot, st: dict, log: list[str]) -> None:
+def _procesar_uno(up: dict, queue, bot: Bot, st: dict, log: list[str],
+                  redactar_idea=None) -> None:
     """Aplica UN update. Aislado para que su fallo no contamine la tanda."""
     if True:
         cb = up.get("callback_query")
@@ -469,3 +476,29 @@ def _procesar_uno(up: dict, queue, bot: Bot, st: dict, log: list[str]) -> None:
                     log.append(f"{item_id} editado y aprobado")
                 else:
                     bot.send("No entendí el texto. El borrador sigue pendiente.")
+                return
+
+        # Un mensaje suelto (no es un botón, no es la edición de un borrador)
+        # es una IDEA de Angel: la nota que se le ocurrió por la calle. El
+        # agente la escribe con su voz y se la devuelve para aprobar. Es el
+        # único contenido del sistema que no nace de un dato.
+        if msg and redactar_idea is not None:
+            from xcreator.idea import MINIMO_CARACTERES, es_idea
+
+            texto = (msg.get("text") or "").strip()
+            if not texto:
+                return
+            if not es_idea(texto):
+                bot.send(f"Para convertir una idea en post necesito al menos "
+                         f"{MINIMO_CARACTERES} caracteres. Mándamela con un "
+                         f"poco más de chicha.")
+                log.append("idea demasiado corta")
+                return
+            bot.send("Idea recibida. Te mando dos versiones en un minuto.")
+            try:
+                ids = redactar_idea(texto)
+            except Exception as e:  # noqa: BLE001 - el bot nunca se cae
+                bot.send(f"No pude escribirla: {type(e).__name__}.")
+                log.append(f"idea falló: {e}")
+                return
+            log.append(f"idea -> {len(ids)} borrador(es): {', '.join(ids)}")

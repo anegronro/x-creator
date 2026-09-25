@@ -4053,3 +4053,149 @@ def test_las_conversaciones_no_gastan_el_cupo_de_replies(tmp_path):
     assert q.replies_de_hoy() == 1
     assert q.conversaciones_de_hoy() == 1
     assert q.replies_opinion_de_hoy() == 1  # solo el normal, sin brief
+
+
+# --- Ideas sueltas desde Telegram ---------------------------------------------
+
+def test_la_nota_solo_permite_las_cifras_que_tu_escribiste():
+    """Sin brief no hay datos: cualquier cifra añadida sería inventada."""
+    from xcreator.generate import validate_numbers
+    from xcreator.idea import brief_idea
+
+    b = brief_idea("lo de los stablecoins me huele a 2008, 40% del colateral "
+                   "es papel comercial")
+    permitidos = b.allowed_numbers()
+    assert not validate_numbers("Stablecoins smell like 2008. 40% of the "
+                                "collateral is commercial paper.", permitidos)
+    # Una cifra que la nota no trae no pasa.
+    assert validate_numbers("Stablecoins are a $180B hole.", permitidos)
+    ctx = " ".join(b.context).lower()
+    assert "no añadas nada que no esté en la nota" in ctx
+    # El ángulo no es del Cerebro a propósito: nada de metodología de analista.
+    assert b.angulo == "personal"
+
+
+def test_una_nota_corta_no_es_una_idea():
+    from xcreator.idea import es_idea
+
+    assert es_idea("los stablecoins son el nuevo papel comercial")
+    assert not es_idea("ok")
+    assert not es_idea("/cola")
+
+
+def test_el_ticker_de_la_nota_solo_si_es_inequivoco():
+    from xcreator.idea import ticker_de_la_nota
+
+    assert ticker_de_la_nota("$NVDA está caro para mi gusto") == "NVDA"
+    assert ticker_de_la_nota("una idea sin empresas") == ""
+
+
+def test_telegram_convierte_un_mensaje_suelto_en_borradores(tmp_path):
+    """El mensaje que no es botón ni edición es una idea de Angel."""
+    from xcreator.store import Queue
+    from xcreator.telegram import Estado, procesar_updates
+
+    q = Queue(tmp_path / "cola.jsonl")
+    notas = []
+
+    class BotFalso:
+        def __init__(self):
+            self.enviados = []
+
+        def updates(self, offset=None):
+            return [{"update_id": 1, "message": {
+                "message_id": 9, "text": "los stablecoins son el nuevo papel "
+                                         "comercial y nadie lo quiere ver"}}]
+
+        def send(self, texto, **kw):
+            self.enviados.append(texto)
+            return {"message_id": 10}
+
+    bot = BotFalso()
+    log = procesar_updates(q, bot, Estado(tmp_path / "estado.json"),
+                           redactar_idea=lambda n: notas.append(n) or ["abc123"])
+    assert notas and "stablecoins" in notas[0]
+    assert any("Idea recibida" in t for t in bot.enviados)
+    assert any("abc123" in linea for linea in log)
+
+
+def test_telegram_sin_generador_de_ideas_no_hace_nada_raro(tmp_path):
+    from xcreator.store import Queue
+    from xcreator.telegram import Estado, procesar_updates
+
+    class BotFalso:
+        def updates(self, offset=None):
+            return [{"update_id": 1, "message": {"message_id": 9, "text": "hola"}}]
+
+        def send(self, texto, **kw):
+            raise AssertionError("no debería mandar nada")
+
+    log = procesar_updates(Queue(tmp_path / "c.jsonl"), BotFalso(),
+                           Estado(tmp_path / "e.json"))
+    assert log == []
+
+
+# --- Bitácora semanal (construir en público) -----------------------------------
+
+def _cambios_txt(tmp_path, lineas):
+    p = tmp_path / "CAMBIOS.txt"
+    p.write_text("\n".join(lineas), encoding="utf-8")
+    return p
+
+
+def test_la_bitacora_solo_mira_la_ultima_semana(tmp_path):
+    from datetime import date
+
+    from xcreator.bitacora import leer_cambios
+
+    ruta = _cambios_txt(tmp_path, [
+        "aaa1111|2026-09-20|fix(publicar): un rechazo no bloquea la cola",
+        "bbb2222|2026-09-19|feat: voz personal en posts y replies",
+        "ccc3333|2026-08-01|feat: algo viejo que no cuenta",
+        "basura sin formato",
+    ])
+    cs = leer_cambios(ruta, dias=7, hoy=date(2026, 9, 21))
+    assert [c.tipo for c in cs] == ["fix", "feat"]
+    assert cs[0].es_arreglo and not cs[1].es_arreglo
+    # El prefijo no se publica: el asunto ya viene limpio.
+    assert cs[0].asunto == "un rechazo no bloquea la cola"
+
+
+def test_sin_cambios_o_sin_posts_no_hay_bitacora(tmp_path):
+    from xcreator.bitacora import Cambio, brief_bitacora
+
+    cambios = [Cambio("2026-09-20", "fix", "algo")]
+    assert brief_bitacora([], 10, 0.5, 5, 3) is None
+    assert brief_bitacora(cambios, 10, 0.5, 0, 3) is None
+    assert brief_bitacora(cambios, 10, 0.5, 5, 3) is not None
+
+
+def test_la_bitacora_publica_costes_reales_y_prohibe_la_infraestructura(tmp_path):
+    from xcreator.bitacora import Cambio, brief_bitacora
+
+    b = brief_bitacora([Cambio("2026-09-20", "fix", "la cola se atascaba")],
+                       llamadas=40, usd=0.80, propios=16, replies=6)
+    valores = {f.label: f.value for f in b.facts}
+    assert valores["lo que costó el modelo esta semana"] == 0.80
+    assert valores["coste medio por llamada al modelo"] == 0.02
+    assert valores["coste del modelo por post publicado"] == 0.05
+    ctx = " ".join(b.context).lower()
+    assert "servidores" in ctx and "no prometas resultados" in ctx
+    assert b.kind == "sistema"
+
+
+def test_publicados_y_replies_de_la_semana(tmp_path):
+    from datetime import date
+
+    from xcreator.bitacora import publicados_semana
+    from xcreator.store import Item
+
+    items = [
+        Item(id="1", creado="2026-09-20T10:00:00+00:00", estado="publicado",
+             texto="a", kind="cripto", publicado_en="2026-09-20T12:00:00+00:00"),
+        Item(id="2", creado="2026-08-01T10:00:00+00:00", estado="publicado",
+             texto="b", kind="macro", publicado_en="2026-08-01T12:00:00+00:00"),
+        Item(id="3", creado="2026-09-19T10:00:00+00:00", estado="pendiente",
+             texto="c", kind="reply"),
+    ]
+    assert publicados_semana(items, dias=7, hoy=date(2026, 9, 21)) == (1, 1)

@@ -135,6 +135,14 @@ case "${1:-}" in
     registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
     exit $codigo
     ;;
+  sistema)
+    # Construir en público: una vez por semana, qué cambió en el agente y qué
+    # costó. Sale de CAMBIOS.txt (lo escribe el despliegue) y del registro de
+    # gasto. Si no hubo cambios, no publica.
+    salida=$("$XC" redactar --sistema 2>&1); codigo=$?
+    registrar "sistema: $(echo "$salida" | tail -4)"
+    exit $codigo
+    ;;
   marcador)
     # El marcador semanal: qué acciones se salieron de su rango del modelo.
     # Viernes después del cierre, para que "la semana" sea la semana entera.
