@@ -44,9 +44,12 @@ HOLGURA_MINUTOS = 2
 # contenido y reintentar solo sirve para que no salga nada detrás.
 MAX_FALLOS_PUBLICAR = 3
 # La ventana de publicación, en horas UTC. TIENE que coincidir con la línea
-# `*/15 11-23 * * * cron.sh publicar` del crontab. Empieza a las 7 AM de
-# Puerto Rico: una hora más de ventana son dos posts más al día.
-VENTANA_UTC = (11, 23)
+# `*/15 11-23,0-3 * * * cron.sh publicar` del crontab. De 7 AM a 11 PM de
+# Puerto Rico: la ventana CRUZA la medianoche UTC, y eso es a propósito. Las
+# 9 PM de Puerto Rico (1:00 UTC) es la mejor hora medida de la cuenta:
+# mediana de 175 impresiones en los replies de esa hora (n=35) contra 60 del
+# día entero, del 12 al 25 de septiembre.
+VENTANA_UTC = (11, 3)
 
 
 @dataclass
@@ -336,12 +339,18 @@ class Queue:
 
         def en_ventana(t):
             ini, fin = VENTANA_UTC
+            # La ventana puede cruzar la medianoche (11 a 3 UTC): entonces
+            # "dentro" es lo de después del inicio O lo de antes del fin, no
+            # lo de en medio. Sin esto, todo lo de la madrugada se empujaba
+            # al día siguiente y la mejor hora de la cuenta no se usaba.
+            dentro = (ini <= t.hour <= fin if ini <= fin
+                      else t.hour >= ini or t.hour <= fin)
+            if dentro:
+                return t
             if t.hour < ini:
                 return t.replace(hour=ini, minute=0, second=0, microsecond=0)
-            if t.hour > fin:
-                return (t + timedelta(days=1)).replace(
-                    hour=ini, minute=0, second=0, microsecond=0)
-            return t
+            return (t + timedelta(days=1)).replace(
+                hour=ini, minute=0, second=0, microsecond=0)
 
         def al_siguiente_paso(t):
             """El cron publica cada PASO_CRON_MINUTOS: redondea hacia arriba."""

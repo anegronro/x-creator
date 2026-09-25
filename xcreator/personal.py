@@ -147,8 +147,20 @@ SEMILLAS: tuple[Semilla, ...] = (
 )
 
 
+# Puerto Rico es UTC-4 todo el año (no cambia la hora). El servidor corre en
+# UTC, así que sin esta cuenta un post de las 9 PM del viernes se generaría
+# "en sábado" y saldría con semilla de fin de semana.
+HORAS_AST = 4
+
+
 def es_finde(dia: date | None = None) -> bool:
-    return (dia or date.today()).weekday() >= 5
+    """True si en Puerto Rico es sábado o domingo."""
+    if dia is not None:
+        return dia.weekday() >= 5
+    from datetime import datetime, timedelta, timezone
+
+    local = datetime.now(timezone.utc) - timedelta(hours=HORAS_AST)
+    return local.weekday() >= 5
 
 
 def elegir_semilla(ultimo_uso: dict[str, str], hoy: date | None = None,

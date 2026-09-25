@@ -2872,17 +2872,33 @@ def test_la_proyeccion_espacia_los_posts_de_la_tanda(tmp_path):
 
 
 def test_la_proyeccion_respeta_la_ventana_horaria(tmp_path):
-    """Un borrador de madrugada no sale de madrugada."""
+    """Un borrador de la madrugada de Puerto Rico espera a la mañana."""
     from datetime import datetime, timezone
 
     from xcreator.store import VENTANA_UTC, Queue
 
-    ahora = datetime(2026, 9, 15, 3, 0, tzinfo=timezone.utc)
+    # 6:00 UTC son las 2 de la madrugada en Puerto Rico: fuera de ventana.
+    ahora = datetime(2026, 9, 15, 6, 0, tzinfo=timezone.utc)
     q = Queue(tmp_path / "cola.jsonl")
     i = q.add(_draft("$NVDA moves. NVDA holds.", ticker="NVDA"),
               estado="programado")
     q.update(i.id, creado=ahora.isoformat())
-    assert q.proyeccion_de_salida(ahora=ahora)[i.id].hour >= VENTANA_UTC[0]
+    assert q.proyeccion_de_salida(ahora=ahora)[i.id].hour == VENTANA_UTC[0]
+
+
+def test_la_ventana_cruza_la_medianoche_utc(tmp_path):
+    """Las 9 PM de Puerto Rico (1:00 UTC) es la mejor hora: tiene que usarse."""
+    from datetime import datetime, timezone
+
+    from xcreator.store import Queue
+
+    ahora = datetime(2026, 9, 16, 0, 30, tzinfo=timezone.utc)  # 8:30 PM AST
+    q = Queue(tmp_path / "cola.jsonl")
+    i = q.add(_draft("I like boring rails."), estado="programado")
+    q.update(i.id, creado=(ahora.replace(hour=0, minute=0)).isoformat())
+    salida = q.proyeccion_de_salida(ahora=ahora)[i.id]
+    # Sale esa misma noche, no a la mañana siguiente.
+    assert salida.day == 16 and salida.hour in (0, 1)
 
 
 def test_la_tarjeta_dice_la_hora_y_no_los_45_minutos(tmp_path):
