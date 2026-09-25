@@ -57,6 +57,8 @@ cambias una regla de contenido o un cupo, actualízalo ahí también.
 | `generate.py` | Claude redacta; el validador numérico verifica. |
 | `store.py` | Cola append-only. Nada se borra. |
 | `telegram.py` | Cola de aprobación con botones. Bot propio. |
+| `idea.py` | Tus notas de Telegram convertidas en posts con tu voz. |
+| `bitacora.py` | Construir en público: qué cambió y qué costó esta semana. |
 
 ## Qué hace bueno a un post (y por qué)
 

@@ -469,6 +469,8 @@ empresa, que es lo contrario de la variedad que se buscaba.
 | `regulacion` | un titular real y fresco de una cuenta vigilada | afirmar nada que el titular no diga; partidismo |
 | `marcador` | todas las predicciones vivas | explicar la causa del movimiento |
 | `cita` | un post ajeno con conversación | (se pega a mano, no sale por API) |
+| `idea` | una nota que Angel manda al bot de Telegram | añadir cualquier cifra, nombre, noticia o fuente que la nota no traiga |
+| `sistema` | el historial de git y el registro de gasto del propio agente | hablar de servidores, rutas o proveedores; prometer resultados que la cuenta no tiene |
 
 Reglas transversales que costaron caro:
 
@@ -495,6 +497,14 @@ Reglas transversales que costaron caro:
   imagen: las que quedaron por debajo del escenario bajo y las que se
   fueron por encima del alto. Publicar dónde falló el propio modelo es
   raro, verificable y atrae correcciones de gente que sabe.
+- **Las ideas de Angel son suyas.** El tipo `idea` es el único contenido que
+  no nace de un dato: el material es una nota que él manda al bot en
+  cualquier idioma. Las únicas cifras permitidas son las que la nota trae, y
+  el post nace `pendiente`, nunca `programado`: su voz la aprueba él.
+- **Construir en público solo con hechos propios.** El tipo `sistema` sale de
+  `CAMBIOS.txt` (el historial de git que escribe el despliegue, porque el
+  servidor no tiene repo) y de `uso_llm.jsonl`. Sin cambios en la semana o
+  sin posts publicados, no hay post: una bitácora vacía es relleno.
 - **Nunca inventar historial.** En macro, cripto y regulación no hay
   predicciones guardadas, así que "me equivoqué" o "yo dije" serían inventos
   sobre el pasado del usuario. Validar las cifras no valida la afirmación.
