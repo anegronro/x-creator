@@ -73,15 +73,16 @@ case "${1:-}" in
     exit $codigo
     ;;
   redactar)
-    # Diez empresas DISTINTAS al día desde el 2026-09-21 (contenido doble;
-    # antes 5, y antes 3). Una por post, cada una con su ángulo.
+    # Nueve empresas DISTINTAS al día. Eran diez hasta el 2026-09-25: Angel
+    # cambió una por un post de opinión suyo, que es lo que mejor le
+    # funciona. Una por post, cada una con su ángulo.
     # Prueba desde el 2026-09-19 (antes eran 3): se mide si la mediana por
     # post aguanta con más volumen. Corre a las 11:30 UTC para que, con la
     # ventana de veto de 45 min y 90 min entre posts, los 8 del día quepan
     # entre 12:30 y 23:00 UTC.
     # La `n` de --auto son tickers, no variantes: subirla amplía el reparto,
     # no repite la misma empresa.
-    salida=$("$XC" redactar --auto --n 10 2>&1); codigo=$?
+    salida=$("$XC" redactar --auto --n 9 2>&1); codigo=$?
     registrar "redactar: $(echo "$salida" | tail -6)"
     exit $codigo
     ;;
