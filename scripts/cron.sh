@@ -135,6 +135,14 @@ case "${1:-}" in
     registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
     exit $codigo
     ;;
+  personal)
+    # Un post de OPINIÓN de Angel, sin cifras y en positivo. Sale solo, tres
+    # veces al día. Es lo que mejor le funciona: sus tres posts con más
+    # alcance de septiembre no llevaban un solo número.
+    salida=$("$XC" redactar --personal 2>&1); codigo=$?
+    registrar "personal: $(echo "$salida" | tail -4)"
+    exit $codigo
+    ;;
   sistema)
     # Construir en público: una vez por semana, qué cambió en el agente y qué
     # costó. Sale de CAMBIOS.txt (lo escribe el despliegue) y del registro de

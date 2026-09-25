@@ -152,6 +152,8 @@ def redactar(
         False, help="Marcador semanal: qué acciones se salieron de su rango."),
     sistema: bool = typer.Option(
         False, help="Bitácora semanal: qué cambió en el agente y qué costó."),
+    personal: bool = typer.Option(
+        False, help="Post de opinión, sin cifras, en la voz de Angel."),
     idea: str = typer.Option(
         "", help="Una nota tuya, en el idioma que sea: sale un post con tu voz."),
 ) -> None:
@@ -181,6 +183,10 @@ def redactar(
 
     if sistema:
         _redactar_bitacora(q, s, encolar=encolar)
+        return
+
+    if personal:
+        _redactar_personal(q, s, n=n, encolar=encolar)
         return
 
     if idea:
@@ -528,6 +534,30 @@ def _regulacion_desde_x(q, s, *, encolar: bool) -> None:
     brief = brief_regulacion(titular, s.fmp_api_key)
     brief.fuente = titular.url
     _redactar_y_encolar_regulacion(q, s, brief, encolar=encolar)
+
+
+def _redactar_personal(q, s, *, n: int, encolar: bool) -> None:
+    """Post de opinión en la voz de Angel: sin datos y sin cifras."""
+    from xcreator.generate import draft_posts
+    from xcreator.personal import brief_personal, elegir_semilla
+
+    semilla = elegir_semilla(q.ultimo_uso_por_motivo())
+    if semilla is None:
+        typer.secho("Todas las semillas salieron hace poco. Mejor callar que "
+                    "repetir la misma opinión.", fg="yellow")
+        return
+    brief = brief_personal(semilla)
+    typer.echo(f"Opinión: {semilla.clave} — {semilla.tema}")
+    typer.echo(f"Ángulo: {brief.angle}\n")
+    drafts = draft_posts(brief, s, n=max(n, 2), recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
+                    "o el modelo no respondió.", fg="red", err=True)
+        raise typer.Exit(1)
+    # El primero válido. Un post de opinión con una cifra inventada NO es
+    # válido, así que en ese caso nace pendiente y lo mira Angel.
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
 
 
 def _redactar_bitacora(q, s, *, encolar: bool) -> None:

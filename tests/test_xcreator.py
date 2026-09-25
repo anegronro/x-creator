@@ -4199,3 +4199,45 @@ def test_publicados_y_replies_de_la_semana(tmp_path):
              texto="c", kind="reply"),
     ]
     assert publicados_semana(items, dias=7, hoy=date(2026, 9, 21)) == (1, 1)
+
+
+# --- Posts de opinión (sin cifras, en positivo) --------------------------------
+
+def test_el_post_de_opinion_no_permite_ninguna_cifra():
+    from xcreator.generate import validate_numbers
+    from xcreator.personal import SEMILLAS, brief_personal
+
+    b = brief_personal(SEMILLAS[0])
+    assert b.facts == [] and b.allowed_numbers() == []
+    assert validate_numbers("Stablecoins settle $2.1B a day.", b.allowed_numbers())
+    assert not validate_numbers("Stablecoins already work. That is the story.",
+                                b.allowed_numbers())
+    ctx = " ".join(b.context).lower()
+    assert "cero cifras" in ctx and "todo en positivo" in ctx
+    # Fuera del Cerebro: sin metodología de analista.
+    assert b.angulo == "personal" and b.kind == "personal"
+
+
+def test_la_semilla_rota_y_calla_si_todas_salieron_hace_poco():
+    from datetime import date
+
+    from xcreator.personal import SEMILLAS, elegir_semilla
+
+    hoy = date(2026, 9, 25)
+    assert elegir_semilla({}, hoy).clave == SEMILLAS[0].clave
+    # La de ayer no repite; sale la siguiente que lleva más tiempo parada.
+    usado = {f"personal:{SEMILLAS[0].clave}": "2026-09-24"}
+    assert elegir_semilla(usado, hoy).clave == SEMILLAS[1].clave
+    # Todas recientes: no hay post.
+    todas = {f"personal:{s.clave}": "2026-09-24" for s in SEMILLAS}
+    assert elegir_semilla(todas, hoy) is None
+    # Pasado el descanso vuelve a estar disponible.
+    viejas = {f"personal:{s.clave}": "2026-09-01" for s in SEMILLAS}
+    assert elegir_semilla(viejas, hoy) is not None
+
+
+def test_el_motivo_de_opinion_viaja_a_la_cola_para_la_rotacion():
+    from xcreator.personal import SEMILLAS, brief_personal
+
+    b = brief_personal(SEMILLAS[3])
+    assert b.motivo == f"personal:{SEMILLAS[3].clave}"
