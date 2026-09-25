@@ -4243,3 +4243,26 @@ def test_el_motivo_de_opinion_viaja_a_la_cola_para_la_rotacion():
 
     b = brief_personal(SEMILLAS[3])
     assert b.motivo == f"personal:{SEMILLAS[3].clave}"
+
+
+def test_el_fin_de_semana_solo_salen_las_semillas_de_vida():
+    """Sábado y domingo la cuenta descansa de mercados: familia, fe, gracias."""
+    from datetime import date
+
+    from xcreator.personal import SEMILLAS, brief_personal, elegir_semilla, es_finde
+
+    sabado, lunes = date(2026, 9, 26), date(2026, 9, 28)
+    assert es_finde(sabado) and not es_finde(lunes)
+
+    s_finde = elegir_semilla({}, sabado)
+    assert s_finde.finde
+    s_semana = elegir_semilla({}, lunes)
+    assert not s_semana.finde
+    # Y no se pisan: lo de la semana no sale el sábado y al revés.
+    usadas_finde = {f"personal:{s.clave}": "2026-09-25"
+                    for s in SEMILLAS if s.finde}
+    assert elegir_semilla(usadas_finde, sabado) is None
+
+    ctx = " ".join(brief_personal(s_finde).context)
+    assert "no va de mercados" in ctx and "versículos" in ctx
+    assert "no menciones precios" in ctx.lower()

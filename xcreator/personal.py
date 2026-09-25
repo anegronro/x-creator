@@ -53,6 +53,10 @@ class Semilla:
     clave: str
     tema: str        # de qué habla, en una frase (para el prompt)
     apertura: str    # qué pregunta abre, para que no todos suenen igual
+    # De fin de semana: familia, fe, gratitud, descanso. Sábado y domingo la
+    # cuenta no publica datos —"para que mis seguidores descansen", dijo
+    # Angel el 2026-09-25— y solo salen estas.
+    finde: bool = False
 
 
 # El catálogo. Corto a propósito: cada una tiene que dar un post que Angel
@@ -118,23 +122,54 @@ SEMILLAS: tuple[Semilla, ...] = (
             "What did teaching it teach you?"),
     Semilla("volatilidad", "volatility as the price of admission",
             "What would you be giving up if prices never moved?"),
+    # --- Fin de semana: la persona, no el mercado ---------------------------
+    Semilla("fe", "faith as the thing that keeps you steady",
+            "What keeps you steady when the week goes sideways?", finde=True),
+    Semilla("gracias_dios", "thanking God for the ordinary days",
+            "What ordinary thing are you grateful for today?", finde=True),
+    Semilla("familia_finde", "weekends with the people you work for",
+            "Who are you actually doing all this for?", finde=True),
+    Semilla("descanso", "resting on purpose and coming back sharper",
+            "When did stepping away make you better at this?", finde=True),
+    Semilla("servir", "helping someone with no upside for you",
+            "Who helped you when there was nothing in it for them?",
+            finde=True),
+    Semilla("esperanza", "expecting good things and working for them",
+            "What are you hopeful about that has nothing to do with price?",
+            finde=True),
+    Semilla("amistad", "friends who tell you the truth",
+            "Who tells you the truth even when you don't want it?",
+            finde=True),
+    Semilla("proposito", "why you started doing this in the first place",
+            "What would you still do if nobody were watching?", finde=True),
+    Semilla("humildad", "staying small while things go well",
+            "What keeps you humble on a good week?", finde=True),
 )
 
 
-def elegir_semilla(ultimo_uso: dict[str, str],
-                   hoy: date | None = None) -> Semilla | None:
+def es_finde(dia: date | None = None) -> bool:
+    return (dia or date.today()).weekday() >= 5
+
+
+def elegir_semilla(ultimo_uso: dict[str, str], hoy: date | None = None,
+                   finde: bool | None = None) -> Semilla | None:
     """La semilla más descansada. None si todas salieron hace muy poco.
 
     Callar es una salida válida: con tres posts al día, forzar una semilla
     repetida es la forma más rápida de sonar a bot con calendario.
     """
     hoy = hoy or date.today()
+    finde = es_finde(hoy) if finde is None else finde
     corte = (hoy - timedelta(days=DESCANSO_DIAS)).isoformat()
 
     def usada(s: Semilla) -> str:
         return ultimo_uso.get(f"personal:{s.clave}", "")
 
-    libres = [s for s in SEMILLAS if usada(s) <= corte]
+    # El fin de semana solo las de familia, fe y descanso. Entre semana, solo
+    # las otras: guardarlas para el finde es lo que hace que el sábado se
+    # note distinto.
+    candidatas = [s for s in SEMILLAS if s.finde == finde]
+    libres = [s for s in candidatas if usada(s) <= corte]
     if not libres:
         return None
     # La que lleva más tiempo sin salir; a igualdad, el orden del catálogo.
@@ -174,6 +209,16 @@ def brief_personal(semilla: Semilla) -> Brief:
             "familia, dormir bien, empezar de cero. Ese es su lado humano y "
             "es lo que hace que la cuenta no parezca un bot.",
             "Corto. Una o dos frases. Como se lo dirías a un amigo.",
+            *(["ES SÁBADO O DOMINGO: este post no va de mercados. Va de la "
+               "vida de Angel: su familia, su fe, lo que agradece, el "
+               "descanso. No menciones precios, ni activos, ni la economía, "
+               "ni el trabajo de analizar.",
+               "Si hablas de Dios o de la fe, hazlo como algo suyo y en "
+               "primera persona, con sencillez. Nada de sermones, nada de "
+               "citar versículos, nada de decirle a nadie lo que tiene que "
+               "creer ni juzgar a quien crea otra cosa.",
+               "Cálido y agradecido, nunca cursi. Una frase honesta vale más "
+               "que una bonita."] if semilla.finde else []),
         ],
         as_of=date.today().isoformat(),
     )
