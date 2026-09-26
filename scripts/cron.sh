@@ -136,6 +136,21 @@ case "${1:-}" in
     registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
     exit $codigo
     ;;
+  ciencia)
+    # Ciencia y tecnología desde fuentes reales (NASA, Nature, ScienceDaily,
+    # Ars Technica). Es el nicho con más interacción de X y el más cercano al
+    # grupo temático donde la cuenta ya tiene audiencia.
+    salida=$("$XC" redactar --ciencia 2>&1); codigo=$?
+    registrar "ciencia: $(echo "$salida" | tail -4)"
+    exit $codigo
+    ;;
+  finde)
+    # Sábado y domingo también se publican empresas: son los posts con mejor
+    # mediana medida (52 impresiones contra 9 de los personales).
+    salida=$("$XC" redactar --auto --n 6 2>&1); codigo=$?
+    registrar "finde: $(echo "$salida" | grep -v '^live_price' | tail -5)"
+    exit $codigo
+    ;;
   personal)
     # Un post de OPINIÓN de Angel, sin cifras y en positivo. Sale solo, tres
     # veces al día. Es lo que mejor le funciona: sus tres posts con más

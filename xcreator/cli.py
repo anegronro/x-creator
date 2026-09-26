@@ -154,6 +154,8 @@ def redactar(
         False, help="Bitácora semanal: qué cambió en el agente y qué costó."),
     personal: bool = typer.Option(
         False, help="Post de opinión, sin cifras, en la voz de Angel."),
+    ciencia: bool = typer.Option(
+        False, help="Post de ciencia o tecnología, desde una fuente real."),
     idea: str = typer.Option(
         "", help="Una nota tuya, en el idioma que sea: sale un post con tu voz."),
 ) -> None:
@@ -187,6 +189,10 @@ def redactar(
 
     if personal:
         _redactar_personal(q, s, n=n, encolar=encolar)
+        return
+
+    if ciencia:
+        _redactar_ciencia(q, s, encolar=encolar)
         return
 
     if idea:
@@ -534,6 +540,32 @@ def _regulacion_desde_x(q, s, *, encolar: bool) -> None:
     brief = brief_regulacion(titular, s.fmp_api_key)
     brief.fuente = titular.url
     _redactar_y_encolar_regulacion(q, s, brief, encolar=encolar)
+
+
+def _redactar_ciencia(q, s, *, encolar: bool) -> None:
+    """Ciencia y tecnología: el nicho con más interacción, y vecino del nuestro."""
+    from xcreator.ciencia import brief_ciencia, elegir, leer
+    from xcreator.generate import draft_posts
+
+    titulares = leer()
+    t = elegir(titulares, q.fuentes_usadas())
+    typer.echo(f"{len(titulares)} titulares leídos de NASA, Nature, "
+               f"ScienceDaily y Ars Technica. Gasto: $0.000")
+    if t is None:
+        typer.secho("Ningún titular de ciencia relevante y sin usar. Mejor "
+                    "callar que estirar una noticia vieja.", fg="yellow")
+        return
+    horas = f"{t.horas:.0f}h" if t.horas is not None else "sin fecha"
+    typer.echo(f"Titular ({horas}, {t.fuente} {t.handle}): {t.titulo[:110]}\n")
+    brief = brief_ciencia(t)
+    brief.fuente = t.url
+    drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
+    if not drafts:
+        typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
+                    "o el modelo no respondió.", fg="red", err=True)
+        raise typer.Exit(1)
+    _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
+                       brief, q, s, encolar=encolar)
 
 
 def _redactar_personal(q, s, *, n: int, encolar: bool) -> None:

@@ -62,6 +62,24 @@ ACTIVOS: dict[str, Activo] = {
         "SOLUSD", "SOL", "Solana",
         "What premium is the fastest chain actually earning?",
         alias=("solana", "sol")),
+    # Ampliado el 2026-09-26 para dar volumen al fin de semana: con cuatro
+    # activos y un post por activo y día, el sábado se quedaba corto.
+    "ada": Activo(
+        "ADAUSD", "ADA", "Cardano",
+        "How much of this price is roadmap and how much is usage?",
+        decimales=4, alias=("cardano", "ada")),
+    "link": Activo(
+        "LINKUSD", "LINK", "Chainlink",
+        "What is the price of being the plumbing everyone depends on?",
+        alias=("chainlink", "link")),
+    "avax": Activo(
+        "AVAXUSD", "AVAX", "Avalanche",
+        "Is this priced as a network or as a beta trade?",
+        alias=("avalanche", "avax")),
+    "doge": Activo(
+        "DOGEUSD", "DOGE", "Dogecoin",
+        "What does this price say about attention as an asset?",
+        decimales=4, alias=("dogecoin", "doge")),
 }
 
 

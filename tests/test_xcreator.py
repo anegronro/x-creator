@@ -4301,3 +4301,41 @@ def test_los_cupos_del_dia_se_cuentan_en_utc(tmp_path, monkeypatch):
     # El contador mira la fecha UTC (26), no la local de la Mac (25).
     monkeypatch.setattr(store, "_hoy_utc", lambda: "2026-09-26")
     assert q.replies_de_hoy() == 1
+
+
+# --- Ciencia y tecnología ------------------------------------------------------
+
+def test_el_titular_de_ciencia_tiene_que_tocar_nuestro_nicho():
+    """Biología marina es ciencia, pero no le habla a esta audiencia."""
+    from xcreator.ciencia import es_relevante
+
+    assert es_relevante("Quantum computing breakthrough cuts error rates")
+    assert es_relevante("New battery chemistry doubles storage density")
+    assert not es_relevante("Ancient coral reveals ocean temperatures")
+
+
+def test_el_post_de_ciencia_atribuye_a_la_cuenta_de_la_fuente():
+    from xcreator.ciencia import Titular, brief_ciencia
+
+    t = Titular(fuente="NASA", handle="@NASA",
+                titulo="NASA launches 2 satellites to study solar wind",
+                resumen="The mission carries 4 instruments.",
+                url="https://www.nasa.gov/news-release/algo-nuevo", horas=3.0)
+    b = brief_ciencia(t)
+    assert b.atribucion == ("@NASA",) and b.kind == "ciencia"
+    # Solo las cifras del titular, como en regulación.
+    assert {2.0, 4.0} <= set(b.allowed_numbers())
+    ctx = " ".join(b.context).lower()
+    assert "nunca como primera palabra" in ctx and "en positivo" in ctx
+
+
+def test_elegir_ciencia_salta_lo_usado_y_lo_viejo():
+    from xcreator.ciencia import Titular, elegir
+
+    def t(clave, horas, titulo="AI chip cuts training cost"):
+        return Titular("Nature", "@nature", titulo, "", f"https://x/{clave}", horas)
+
+    fresco, viejo = t("a", 2.0), t("b", 100.0)
+    nada_que_ver = t("c", 1.0, titulo="Ancient pottery found in Peru")
+    assert elegir([viejo, fresco, nada_que_ver], set()).clave == "a"
+    assert elegir([viejo, fresco, nada_que_ver], {"a"}) is None
