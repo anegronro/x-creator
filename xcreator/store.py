@@ -107,6 +107,19 @@ class Item:
         return self.texto_editado or self.texto
 
 
+def _hoy_utc() -> str:
+    """La fecha de HOY en UTC, que es la que usan las marcas de la cola.
+
+    `date.today()` da la fecha LOCAL. En el VPS da igual porque corre en UTC,
+    pero en la Mac de Angel (UTC-4) a partir de las 8 de la noche la fecha
+    local es la de ayer y los cupos del día se contaban a cero: los replies
+    de esta noche no existían para el contador.
+    """
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).date().isoformat()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -266,9 +279,8 @@ class Queue:
         Con `autor`, solo los dirigidos a esa cuenta — que es como se aplica
         un tope por cuenta sin tocar el global.
         """
-        from datetime import date
 
-        hoy = date.today().isoformat()
+        hoy = _hoy_utc()
         quien = autor.lstrip("@").lower()
         # Las respuestas en tus propios posts NO gastan este cupo: tienen el
         # suyo (conversaciones_de_hoy). Son conversaciones que ya empezaron.
@@ -280,9 +292,8 @@ class Queue:
 
     def conversaciones_de_hoy(self) -> int:
         """Respuestas propuestas hoy a gente que contestó en tus posts."""
-        from datetime import date
 
-        hoy = date.today().isoformat()
+        hoy = _hoy_utc()
         return sum(1 for i in self.load()
                    if i.brief_id == "conversacion"
                    and (i.creado or "")[:10] == hoy)
@@ -293,9 +304,8 @@ class Queue:
                 if (i.motivo or "").startswith("reply:")}
 
     def reciclados_de_hoy(self) -> int:
-        from datetime import date
 
-        hoy = date.today().isoformat()
+        hoy = _hoy_utc()
         return sum(1 for i in self.load()
                    if (i.motivo or "").startswith("reply:")
                    and (i.creado or "")[:10] == hoy)
@@ -392,9 +402,8 @@ class Queue:
 
     def citas_de_hoy(self) -> int:
         """Citas propuestas hoy. No gastan el cupo de replies: son otra cosa."""
-        from datetime import date
 
-        hoy = date.today().isoformat()
+        hoy = _hoy_utc()
         return sum(1 for i in self.load()
                    if i.kind == "cita" and (i.creado or "")[:10] == hoy)
 
@@ -408,9 +417,8 @@ class Queue:
         comieron el único hueco del día, y la opinión de verdad (la CFTC en
         WatcherGuru) no pudo salir.
         """
-        from datetime import date
 
-        hoy = date.today().isoformat()
+        hoy = _hoy_utc()
         return sum(1 for i in self.load()
                    if i.kind == "reply" and (i.creado or "")[:10] == hoy
                    and not (i.brief_id or "").strip())

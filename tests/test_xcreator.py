@@ -4282,3 +4282,22 @@ def test_el_fin_de_semana_solo_salen_las_semillas_de_vida():
     ctx = " ".join(brief_personal(s_finde).context)
     assert "no va de mercados" in ctx and "versículos" in ctx
     assert "no menciones precios" in ctx.lower()
+
+
+def test_los_cupos_del_dia_se_cuentan_en_utc(tmp_path, monkeypatch):
+    """A las 9 PM de Puerto Rico ya es otro día en UTC: el cupo tiene que verlo."""
+    from datetime import datetime, timezone
+
+    from xcreator import store
+    from xcreator.store import Queue
+
+    q = Queue(tmp_path / "cola.jsonl")
+    ahora = datetime(2026, 9, 26, 1, 0, tzinfo=timezone.utc)  # 9 PM AST del 25
+    monkeypatch.setattr(store, "_now", lambda: ahora.isoformat())
+    from xcreator.replies import ReplyDraft
+
+    q.add(ReplyDraft(texto="The 10-year is the story.", que_aporta="x",
+                     autor="@zerohedge"))
+    # El contador mira la fecha UTC (26), no la local de la Mac (25).
+    monkeypatch.setattr(store, "_hoy_utc", lambda: "2026-09-26")
+    assert q.replies_de_hoy() == 1
