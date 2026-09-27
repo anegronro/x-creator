@@ -24,7 +24,7 @@ import httpx
 
 from xcreator.generate import (
     MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cashtags_de_mas,
-    cifras_mal_formateadas, falta_atribucion,
+    cifras_mal_formateadas, falta_atribucion, menciona_familia_privada,
     es_ingles, falta_sujeto, falta_ticker, lleva_raya, validate_numbers,
 )
 
@@ -184,6 +184,15 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
             problemas.append(
                 f"el post al que responde tiene {horas:.0f} horas (límite "
                 f"{HORAS_MAX_PARA_RESPONDER}): la conversación ya pasó")
+    # La esposa y los hijos de Angel no salen en ningún post, lo escriba el
+    # modelo o lo escriba él al editar. Se revisa aquí además de al generar:
+    # una regla que solo corre en generación no protege a lo que ya está en
+    # la cola ni a un texto editado a mano.
+    privadas = menciona_familia_privada(entero)
+    if privadas:
+        problemas.append(
+            f"nombra a la familia cercana ({', '.join(privadas)}): la esposa "
+            f"y los hijos de Angel no salen en los posts")
     # Periodismo: el hecho va atribuido a quien lo publicó, con su @.
     atribucion = getattr(item, "atribucion", None) or []
     if atribucion and falta_atribucion(entero, atribucion):

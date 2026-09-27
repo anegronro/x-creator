@@ -61,6 +61,8 @@ def brief_idea(nota: str, ticker: str = "") -> Brief:
             "NO puedes es añadir un historial que la nota no menciona.",
             "Sin partidismo, sin consejo de compra o venta, sin links ni "
             "hashtags.",
+            "NUNCA menciones a la esposa ni a los hijos de Angel, aunque "
+            "su nota los nombre: en ese caso escribe la idea sin ellos.",
             "Que se entienda sin contexto: quien lo lea no vio la nota ni "
             "sabe de qué hablabas antes.",
         ],

@@ -108,6 +108,11 @@ the idea truly needs it.
 tape", "scorecard", "call it", "here's the thing", "worth watching", \
 "let that sink in". Don't open every post the same way or close every post \
 with a question.
+- NEVER write about Angel's wife or his children. Not a mention, not a \
+detail, not a scene at home with them, not "my kid said", not even \
+affectionately. They did not choose a public account. If a thought needs \
+them to land, write a different thought. Parents, friends, neighbours and \
+his own past are fine.
 - No emoji, no hashtags."""
 
 
@@ -398,6 +403,25 @@ def falta_sujeto(texto: str, alias: tuple[str, ...] | list[str]) -> bool:
     return not any(a.lower() in t for a in alias)
 
 
+# La familia cercana de Angel NO sale en los posts. Lo pidió el 2026-09-26:
+# "no publiques nada de mi hija, ni de mi esposa". No es cuestión de tono:
+# son personas que no eligieron tener una cuenta pública, y un post ya
+# publicado no se puede despublicar de la cabeza de nadie. Se comprueba en
+# código porque una regla que solo vive en el prompt no protege nada.
+_FAMILIA_PRIVADA = re.compile(
+    r"\b(my|mi)\s+(wife|spouse|daughter|daughters|son|sons|kid|kids|"
+    r"child|children|baby|esposa|mujer|hija|hijas|hijo|hijos|"
+    r"nena|nene)\b|\b(wifey|my girl)\b",
+    re.IGNORECASE,
+)
+
+
+def menciona_familia_privada(texto: str) -> list[str]:
+    """Las menciones a la esposa o a los hijos de Angel. Vacío = limpio."""
+    return sorted({m.group(0).lower()
+                   for m in _FAMILIA_PRIVADA.finditer(texto or "")})
+
+
 def falta_atribucion(texto: str, fuentes) -> bool:
     """True si el post no nombra a ninguna de las fuentes del hecho.
 
@@ -506,6 +530,8 @@ class Draft:
     # A quién hay que atribuir el hecho, y si el texto lo hizo.
     atribucion: list[str] = field(default_factory=list)
     sin_atribucion: bool = False
+    # Menciones a la esposa o a los hijos: nunca salen.
+    familia_privada: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -522,6 +548,7 @@ class Draft:
             and not self.frases_repetidas
             and not self.partidismo
             and not self.sin_atribucion
+            and not self.familia_privada
         )
 
     @property
@@ -846,6 +873,7 @@ def draft_posts(
                 kind=brief.kind,
                 motivo=getattr(brief, "motivo", ""),
                 atribucion=list(getattr(brief, "atribucion", ()) or ()),
+                familia_privada=menciona_familia_privada("\n".join(piezas)),
                 sin_atribucion=falta_atribucion(
                     "\n".join(piezas), getattr(brief, "atribucion", ())),
                 model=model or MODEL,

@@ -76,7 +76,7 @@ SEMILLAS: tuple[Semilla, ...] = (
             "What part of the work would people skip if they could?"),
     Semilla("gratitud", "gratitude for the chance to do this at all",
             "What is easy to take for granted in this job?"),
-    Semilla("familia", "life outside the screen: family, health, sleep",
+    Semilla("vida_fuera", "life outside the screen: rest, health, sleep",
             "What keeps you sane when the market does not cooperate?"),
     Semilla("tecnologia", "technology making things cheaper and faster",
             "Which change is already here that people still call the future?"),
@@ -127,8 +127,8 @@ SEMILLAS: tuple[Semilla, ...] = (
             "What keeps you steady when the week goes sideways?", finde=True),
     Semilla("gracias_dios", "thanking God for the ordinary days",
             "What ordinary thing are you grateful for today?", finde=True),
-    Semilla("familia_finde", "weekends with the people you work for",
-            "Who are you actually doing all this for?", finde=True),
+    Semilla("razon", "keeping sight of why you work this hard",
+            "What are you actually working for?", finde=True),
     Semilla("descanso", "resting on purpose and coming back sharper",
             "When did stepping away make you better at this?", finde=True),
     Semilla("servir", "helping someone with no upside for you",
@@ -146,8 +146,8 @@ SEMILLAS: tuple[Semilla, ...] = (
             "What keeps you humble on a good week?", finde=True),
     Semilla("perdonar", "letting go of something you were carrying",
             "What did you stop carrying this week?", finde=True),
-    Semilla("hijos", "what you want your kids to remember",
-            "What do you want them to remember about you?", finde=True),
+    Semilla("huella", "what you want to be remembered for",
+            "What do you want people to say you were like?", finde=True),
     Semilla("raices", "where you come from and who paid for it",
             "Who worked so you could do what you do?", finde=True),
     Semilla("silencio", "a morning without the phone",
@@ -220,9 +220,8 @@ SEMILLAS: tuple[Semilla, ...] = (
             finde=True),
     Semilla("dar_anonimo", "giving without anyone finding out",
             "What is better when nobody knows you did it?", finde=True),
-    Semilla("hijos_trabajo", "teaching your kids what work looks like",
-            "What do your kids see you do, not hear you say?",
-            finde=True),
+    Semilla("ejemplo", "being the example instead of giving the speech",
+            "What do people learn from watching you work?", finde=True),
     Semilla("madrugar", "the quiet of being up before everyone",
             "What is worth waking up early for?", finde=True),
     Semilla("cansancio", "being tired for the right reasons",
@@ -313,6 +312,11 @@ def brief_personal(semilla: Semilla) -> Brief:
             "Puede hablar de la vida, no solo de mercados: el trabajo, la "
             "familia, dormir bien, empezar de cero. Ese es su lado humano y "
             "es lo que hace que la cuenta no parezca un bot.",
+            "NUNCA escribas sobre la esposa ni sobre los hijos de Angel. "
+            "Ni de pasada, ni con cariño, ni una escena en casa con ellos. "
+            "No eligieron tener una cuenta pública. Si la idea los necesita, "
+            "escribe otra idea. Padres, amigos, vecinos y su propio pasado "
+            "sí se pueden nombrar.",
             "Corto. Una o dos frases. Como se lo dirías a un amigo.",
             *(["ES SÁBADO O DOMINGO: este post no va de mercados. Va de la "
                "vida de Angel: su familia, su fe, lo que agradece, el "

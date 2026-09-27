@@ -4339,3 +4339,31 @@ def test_elegir_ciencia_salta_lo_usado_y_lo_viejo():
     nada_que_ver = t("c", 1.0, titulo="Ancient pottery found in Peru")
     assert elegir([viejo, fresco, nada_que_ver], set()).clave == "a"
     assert elegir([viejo, fresco, nada_que_ver], {"a"}) is None
+
+
+def test_nunca_se_publica_a_la_esposa_ni_a_los_hijos():
+    """Angel, 2026-09-26: "no publiques nada de mi hija, ni de mi esposa"."""
+    from xcreator.generate import menciona_familia_privada
+    from xcreator.publicar import revisar_antes_de_publicar
+    from xcreator.store import Item
+
+    assert menciona_familia_privada("I want my kids to remember I was there")
+    assert menciona_familia_privada("My wife just kept showing up")
+    assert menciona_familia_privada("Mi hija me lo dijo")
+    # Padres, hermanos y amigos sí se pueden nombrar.
+    assert not menciona_familia_privada("My mother did the heavy part")
+    assert not menciona_familia_privada("A friend told me the truth")
+
+    item = Item(id="x", creado="2026-09-26T12:00:00+00:00", estado="programado",
+                texto="I asked my wife for help before I had a plan.",
+                kind="personal")
+    problemas = revisar_antes_de_publicar(item)
+    assert any("familia cercana" in p for p in problemas), problemas
+
+
+def test_un_borrador_que_los_nombra_no_es_valido():
+    from xcreator.generate import Draft
+
+    d = Draft(text="My kids saw me work", approach="x", reply_hook="y",
+              familia_privada=["my kids"])
+    assert not d.valido
