@@ -2832,18 +2832,21 @@ def test_el_texto_limpio_sigue_pasando(tmp_path):
 
 
 def test_el_cupo_de_replies_y_su_parte_de_opinion():
-    """Total 6, opinión 1.
+    """Total 8, y la mayoría pueden ser de opinión.
 
-    El total sube de 3 porque no debe bloquear nunca un reply con datos: son
-    los de mejor mediana de todo lo que publica la cuenta (104 frente a 60 de
-    los posts propios). La opinión se queda en 1 porque su mediana es 22, y
-    el cuello real son los tickers emparejables, no el cupo."""
+    Hasta el 2026-09-30 la opinión estaba capada en 1 de 6, porque su mediana
+    medida era 22 contra 104 de los replies con datos. Angel lo cambió con
+    una razón que los números no ven: "un humano no siempre responde con
+    datos, la mayoría del tiempo son opiniones". Una cuenta que solo contesta
+    con estadísticas se lee como un bot, y los tres replies suyos que más
+    volaron no llevaban ni una cifra."""
     from xcreator.config import Settings
 
     s = Settings()
-    assert s.replies_por_dia == 6
-    assert s.replies_opinion_por_dia == 1
-    assert s.replies_opinion_por_dia * 3 <= s.replies_por_dia
+    assert s.replies_por_dia == 8
+    assert s.replies_opinion_por_dia == 5
+    # Sigue quedando sitio para los de datos: el sub-tope no se come el total.
+    assert s.replies_opinion_por_dia < s.replies_por_dia
 
 
 # --- la tarjeta de Telegram no puede prometer lo que no pasa ---------------
