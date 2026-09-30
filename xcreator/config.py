@@ -63,7 +63,11 @@ class Settings:
     # tope sigue existiendo porque cada reply es trabajo manual de Angel (X
     # bloqueó publicarlos por API) y porque al agotarse corta las lecturas de
     # X antes de gastarlas. Seis son unos diez minutos suyos al día.
-    replies_por_dia: int = 8
+    # Bajado de 8 a 3 el 2026-09-30. En los 14 días anteriores el agente
+    # propuso 89 replies y citas y NO se publicó ninguno: 81 caducaron. El
+    # cuello nunca fue cuántos se generan, es que cada uno cuesta abrir X,
+    # copiar y pegar. Pocos y buenos, para que salgan de verdad.
+    replies_por_dia: int = 3
     # De esos, cuántos pueden ser de opinión (sin cifras propias). Los de
     # datos son lo que diferencia la cuenta; los de opinión son más fáciles
     # de producir y hay muchos más posts candidatos, así que sin este
@@ -73,10 +77,10 @@ class Settings:
     # frente a 104 los que llevan datos (n=8/40, p=0.003). El cuello no es el
     # cupo sino los tickers: solo hubo 8 posts ajenos emparejables en 7 días,
     # así que subir la opinión solo fabrica más de la categoría más floja.
-    # Subido de 1 a 5 (de 8) el 2026-09-30. Angel: "un humano no siempre
-    # responde con datos, la mayoría del tiempo son opiniones". El sub-tope
-    # ya no protege a los de datos: ahora protege que quede al menos alguno.
-    replies_opinion_por_dia: int = 5
+    # Angel, 2026-09-30: "un humano no siempre responde con datos, la
+    # mayoría del tiempo son opiniones". Con 3 replies al día, 2 pueden ser
+    # de opinión y queda 1 para cuando el dato sea lo más afilado.
+    replies_opinion_por_dia: int = 2
     # Y solo a posts recientes: a las tres horas la conversación ya se movió.
     horas_frescura_reply: float = 3.0
     # Los posts de regulación salen de fuentes OFICIALES (SEC, CFTC, Federal
@@ -168,8 +172,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         x_handle=get("X_HANDLE"),
         x_callback=get("X_CALLBACK_URL"),
         x_presupuesto_pasada=float(get("X_PRESUPUESTO_PASADA") or 0.50),
-        replies_por_dia=int(get("REPLIES_POR_DIA") or 8),
-        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 5),
+        replies_por_dia=int(get("REPLIES_POR_DIA") or 3),
+        replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 2),
         horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
         regulacion_respaldo_x=(get("REGULACION_RESPALDO_X") or "false").lower()
         in ("true", "1", "si", "sí", "yes"),

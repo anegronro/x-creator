@@ -2832,7 +2832,11 @@ def test_el_texto_limpio_sigue_pasando(tmp_path):
 
 
 def test_el_cupo_de_replies_y_su_parte_de_opinion():
-    """Total 8, y la mayoría pueden ser de opinión.
+    """Total 3, y dos de ellos pueden ser de opinión.
+
+    El total baja de 8 a 3 el 2026-09-30: en los 14 días anteriores se
+    propusieron 89 replies y no se publicó ninguno, porque cada uno hay que
+    pegarlo a mano. Proponer menos y mejores es lo que hace que salgan.
 
     Hasta el 2026-09-30 la opinión estaba capada en 1 de 6, porque su mediana
     medida era 22 contra 104 de los replies con datos. Angel lo cambió con
@@ -2843,8 +2847,8 @@ def test_el_cupo_de_replies_y_su_parte_de_opinion():
     from xcreator.config import Settings
 
     s = Settings()
-    assert s.replies_por_dia == 8
-    assert s.replies_opinion_por_dia == 5
+    assert s.replies_por_dia == 3
+    assert s.replies_opinion_por_dia == 2
     # Sigue quedando sitio para los de datos: el sub-tope no se come el total.
     assert s.replies_opinion_por_dia < s.replies_por_dia
 
