@@ -24,7 +24,8 @@ import httpx
 
 from xcreator.generate import (
     MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cashtags_de_mas,
-    cifras_mal_formateadas, falta_atribucion, menciona_familia_privada,
+    cifras_mal_formateadas, falta_atribucion, jerga_de_modelo,
+    menciona_familia_privada,
     falta_sujeto, falta_ticker, idioma_correcto, lleva_raya, validate_numbers,
 )
 
@@ -189,6 +190,11 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
     # modelo o lo escriba él al editar. Se revisa aquí además de al generar:
     # una regla que solo corre en generación no protege a lo que ya está en
     # la cola ni a un texto editado a mano.
+    suena_a_maquina = jerga_de_modelo(entero)
+    if suena_a_maquina:
+        problemas.append(
+            f"suena a informe, no a persona ({', '.join(suena_a_maquina)}): "
+            f"dilo como lo dirías en voz alta")
     privadas = menciona_familia_privada(entero)
     if privadas:
         problemas.append(

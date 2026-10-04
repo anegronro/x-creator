@@ -133,13 +133,10 @@ classifications and ranges with stated assumptions. "The model's range is X" \
 is fine; "load up here" is not.
 3. NEVER include a link or a URL. Links cut organic reach and cost 13x more \
 to publish.
-3b. ALWAYS mention the ticker BOTH ways somewhere in the post: as a cashtag \
-($NVDA) and as plain text (NVDA). X indexes them separately — the cashtag \
-makes it clickable and files it under the symbol, the plain text shows up in \
-regular search. Using only one throws away half the discovery. Work both \
-into sentences that read naturally; do NOT tack the ticker onto the end as a \
-label. "$NVDA base is $305.61" and "NVDA still trades at 44x" beats any \
-version that ends with a bare ticker.
+3b. Mention the company ONCE, as a cashtag ($NVDA), inside a sentence \
+where it belongs. Saying it twice to game search is the most artificial \
+thing this account used to do: "$NVDA base is 305 and NVDA still trades \
+at 44x" is not how anyone writes. Once, naturally, and move on.
 4. Always state the assumption behind a projection. A number without its \
 assumption is a lie told with confidence.
 5. Never present a projection as a single value when the brief gives a range.
@@ -176,6 +173,20 @@ which reads as engagement bait.
 - Publishing your own misses beats publishing only your hits. It is rarer \
 and it draws better replies.
 - Concrete beats clever. No hype adjectives, no emoji walls, no hashtags.
+- NEVER cite where a price came from. "Per FMP", "per FRED data", "according \
+to the data" are tells that a machine wrote this. You just know the price, \
+the way anyone watching does. Attribution is only for news somebody else \
+published, and that one gets their @.
+- NEVER use the internal vocabulary of the model: "base case", "my base", \
+"the range", "bear case", "upside", "inside the range", "my model", "I \
+published X at", "at publication", "12-month range", "scenario". Those are \
+notes to yourself. Say it the way you would out loud: "I thought it had a \
+lot more room than this", "it has gone nowhere since I bought the story".
+- VARY THE SHAPE. Do not end every post with the same reversal ("that is X, \
+not Y") and do not open every post with "I". Some posts are a flat \
+statement, some are a question, some are two sentences that do not rhyme \
+with each other. If three of your posts could swap endings without anyone \
+noticing, they are all the same post.
 
 """ + "\n\n" + VOZ_PERSONAL
 
@@ -450,6 +461,28 @@ def menciona_familia_privada(texto: str) -> list[str]:
                    for m in _FAMILIA_PRIVADA.finditer(texto or "")})
 
 
+# Lo que delata a una máquina. No es cuestión de gusto: Angel leyó "My AVGO
+# base assumed 36% upside. Per FMP the stock is up 3%" y dijo que se lee
+# artificial, y tenía razón. Son dos cosas que el propio sistema pedía:
+# citar de dónde salió el precio y hablar con el vocabulario interno del
+# modelo. Se bloquean en código porque el prompt solo es una petición.
+_JERGA = (
+    "per fmp", "per fred", "according to fmp", "according to fred",
+    "per the data", "according to the data", "data shows",
+    "base case", "my base", "the base", "bear case", "bull case",
+    "inside the range", "outside the range", "my range", "the range was",
+    "12m range", "12-month range", "at publication", "when we ran it",
+    "when i ran it", "when we published", "my model", "our model",
+    "scenario range", "upside to", "my target", "price target",
+)
+
+
+def jerga_de_modelo(texto: str) -> list[str]:
+    """Las frases que delatan que esto lo escribió un sistema. Vacío = limpio."""
+    t = " ".join((texto or "").lower().split())
+    return [f for f in _JERGA if f in t]
+
+
 def falta_atribucion(texto: str, fuentes) -> bool:
     """True si el post no nombra a ninguna de las fuentes del hecho.
 
@@ -477,13 +510,14 @@ def falta_ticker(texto: str, ticker: str) -> list[str]:
     if not ticker:
         return []
     t = re.escape(ticker.upper())
-    faltan = []
-    if not re.search(rf"\${t}\b", texto, re.IGNORECASE):
-        faltan.append(f"${ticker.upper()}")
-    # El ticker suelto: `(?<!\$)` evita contar el que ya lleva el cashtag.
-    if not re.search(rf"(?<!\$)\b{t}\b", texto, re.IGNORECASE):
-        faltan.append(ticker.upper())
-    return faltan
+    # UNA sola forma, el cashtag. Hasta el 2026-10-03 se exigían las dos
+    # ($NVDA y NVDA) para ganar descubrimiento, y el precio fue escribir
+    # frases que ninguna persona escribe: "$AVGO inside the range is the
+    # stock not moving". El descubrimiento no vale un post que se lee a
+    # máquina.
+    if re.search(rf"\${t}\b", texto, re.IGNORECASE):
+        return []
+    return [f"${ticker.upper()}"]
 
 
 _CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
@@ -561,6 +595,8 @@ class Draft:
     # Menciones a la esposa o a los hijos: nunca salen.
     familia_privada: list[str] = field(default_factory=list)
     idioma: str = "en"
+    # Frases de informe que delatan a la máquina ("per FMP", "base case").
+    jerga: list[str] = field(default_factory=list)
 
     @property
     def valido(self) -> bool:
@@ -578,6 +614,7 @@ class Draft:
             and not self.partidismo
             and not self.sin_atribucion
             and not self.familia_privada
+            and not self.jerga
         )
 
     @property
@@ -717,17 +754,15 @@ def _reparar_ticker_mecanico(texto: str, ticker: str) -> str:
     """
     t = re.escape(ticker.upper())
     faltan = falta_ticker(texto, ticker)
-    cashtags = list(re.finditer(rf"\${t}\b", texto, re.IGNORECASE))
     planos = list(re.finditer(rf"(?<!\$)\b{t}\b", texto, re.IGNORECASE))
-    if f"${ticker.upper()}" in faltan and len(planos) >= 2:
-        # El primero se vuelve cashtag; los demás siguen dando la forma plana.
+    # Solo falta el cashtag y la empresa ya se nombra: se le pone el dólar al
+    # primer nombre suelto. La operación inversa (quitarle el dólar a un
+    # cashtag para dejar la forma plana) desapareció el 2026-10-03 con la
+    # regla de las dos formas.
+    if faltan and planos:
         i = planos[0].start()
         nuevo = texto[:i] + "$" + texto[i:]
         return nuevo if len(nuevo) <= MAX_CHARS else texto
-    if ticker.upper() in faltan and len(cashtags) >= 2:
-        # Al último se le quita el `$`; el primero sigue siendo clickeable.
-        i = cashtags[-1].start()
-        return texto[:i] + texto[i + 1:]
     return texto
 
 
@@ -908,6 +943,7 @@ def draft_posts(
                 idioma=getattr(brief, "idioma", "en"),
                 atribucion=list(getattr(brief, "atribucion", ()) or ()),
                 familia_privada=menciona_familia_privada("\n".join(piezas)),
+                jerga=jerga_de_modelo("\n".join(piezas)),
                 sin_atribucion=falta_atribucion(
                     "\n".join(piezas), getattr(brief, "atribucion", ())),
                 model=model or MODEL,

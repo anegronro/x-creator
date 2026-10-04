@@ -844,7 +844,7 @@ def test_detecta_tickers_por_cashtag_y_por_sigla():
 # --- texto partido a media palabra ----------------------------------------
 
 @pytest.mark.parametrize("texto,roto", [
-    ("bear case is $194.56 \ntlessly flat, base $275.14.", True),   # caso real
+    ("floor I had in mind is $194.56 \ntlessly flat, base $275.14.", True),   # caso real
     ("First line.\nSecond line here.", False),
     ("Scoreboard:\n\nBear $194.56.", False),
     ("Range: bear $194.\nWhich breaks first?", False),
@@ -1085,7 +1085,7 @@ def test_post_en_espanol_no_es_valido():
 def test_reply_en_espanol_no_es_valido():
     from xcreator.replies import ReplyDraft
 
-    d = ReplyDraft(texto="El bear case está pegado al precio.",
+    d = ReplyDraft(texto="El floor I had in mind está pegado al precio.",
                    que_aporta="x", autor="@y", idioma_incorrecto=True)
     assert not d.valido
 
@@ -1572,26 +1572,28 @@ def test_pedir_un_ticker_concreto_lo_busca_en_todos(tmp_path):
     assert "ZZZ" not in {b.ticker for b in load_briefs(tmp_path, limit=2)}
 
 
-# --- el ticker, siempre en las dos formas ---------------------------------
+# --- el ticker: UNA vez, como cashtag -------------------------------------
 
 @pytest.mark.parametrize("texto,faltan", [
-    ("$NVDA base is $305.61. NVDA multiple never moves.", []),
-    ("$NVDA base is $305.61.", ["NVDA"]),          # falta el plano
-    ("NVDA base is $305.61.", ["$NVDA"]),          # falta el cashtag
-    ("Nothing about the company here.", ["$NVDA", "NVDA"]),
+    ("$NVDA has gone nowhere since August.", []),
+    ("$NVDA has gone nowhere and still asks for a lot.", []),
+    ("NVDA has gone nowhere since August.", ["$NVDA"]),
+    ("Nothing about the company here.", ["$NVDA"]),
 ])
-def test_exige_las_dos_formas_del_ticker(texto, faltan):
-    """X indexa el cashtag y el texto plano por separado: usar solo uno tira
-    la mitad del descubrimiento, que es lo escaso en una cuenta pequeña."""
+def test_el_ticker_va_una_vez_como_cashtag(texto, faltan):
+    """Hasta el 2026-10-03 se exigían las DOS formas ($NVDA y NVDA) para ganar
+    descubrimiento. El precio era escribir frases que nadie escribe ("$AVGO
+    inside the range is the stock not moving") y Angel lo leyó como lo que
+    era: artificial. El descubrimiento no vale un post que suena a máquina."""
     from xcreator.generate import falta_ticker
 
     assert falta_ticker(texto, "NVDA") == faltan
 
 
-def test_el_cashtag_no_cuenta_como_ticker_plano():
+def test_decirlo_dos_veces_ya_no_hace_falta_pero_no_estorba():
     from xcreator.generate import falta_ticker
 
-    assert falta_ticker("Only $NVDA here", "NVDA") == ["NVDA"]
+    assert falta_ticker("Only $NVDA here", "NVDA") == []
 
 
 def test_un_post_sin_las_dos_formas_no_es_valido():
@@ -1763,7 +1765,7 @@ def test_un_post_propio_sigue_publicandose(tmp_path):
     from xcreator.publicar import revisar_antes_de_publicar
 
     q = Queue(tmp_path / "cola.jsonl")
-    i = q.add(_draft("$NVDA at 44x. NVDA base case is $305.61."))
+    i = q.add(_draft("$NVDA at 44x. NVDA story I bought is $305.61."))
     q.aprobar(i.id)
     assert revisar_antes_de_publicar(q.get(i.id)) == []
 
@@ -2169,7 +2171,7 @@ def test_el_ticker_puede_estar_repartido_en_el_hilo(tmp_path):
     from xcreator.publicar import revisar_antes_de_publicar
 
     _, item = _item_aprobado(
-        tmp_path, "$NVDA base case at $275.14.",
+        tmp_path, "$NVDA story I bought at $275.14.",
         ticker="NVDA", thread=["NVDA holds only if growth stays 40%."])
     assert revisar_antes_de_publicar(item) == []
 
@@ -2178,16 +2180,17 @@ def test_reparacion_mecanica_pone_el_cashtag_al_primero(tmp_path):
     """Con dos menciones planas, una se vuelve cashtag sin gastar una llamada."""
     from xcreator.generate import _reparar_ticker_mecanico, falta_ticker
 
-    t = "NVDA trades at 44.60x. The NVDA base case is $305.61."
+    t = "NVDA trades at 44.60x. The NVDA story I bought is $305.61."
     out = _reparar_ticker_mecanico(t, "NVDA")
     assert out.startswith("$NVDA")
     assert falta_ticker(out, "NVDA") == []
 
 
-def test_reparacion_mecanica_quita_el_dolar_al_ultimo(tmp_path):
+def test_reparacion_mecanica_pone_el_dolar_cuando_falta(tmp_path):
+    """Si la empresa se nombra pero sin cashtag, se le pone el dólar."""
     from xcreator.generate import _reparar_ticker_mecanico, falta_ticker
 
-    t = "$NVDA trades at 44.60x. The $NVDA base case is $305.61."
+    t = "NVDA trades at 44.60x and NVDA has gone nowhere since August."
     out = _reparar_ticker_mecanico(t, "NVDA")
     assert falta_ticker(out, "NVDA") == []
     assert out.count("$NVDA") == 1
@@ -2360,7 +2363,7 @@ def test_el_post_de_empresa_no_pasa_por_la_regla_del_sujeto():
     """Ahí el cashtag ya dice de qué se habla; exigir más sería ruido."""
     from xcreator.generate import falta_sujeto
 
-    assert not falta_sujeto("$NVDA base case is $305.61.", ())
+    assert not falta_sujeto("$NVDA story I bought is $305.61.", ())
 
 
 def test_publicar_bloquea_el_macro_que_no_dice_de_que_habla(tmp_path):
@@ -2534,7 +2537,7 @@ def test_el_post_de_empresa_si_puede_citar_su_propia_llamada(tmp_path):
     from xcreator.publicar import revisar_antes_de_publicar
 
     _, item = _item_aprobado(
-        tmp_path, "Our bear case on $NVDA was $194.56. NVDA never touched it.",
+        tmp_path, "Our floor I had in mind on $NVDA was $194.56. NVDA never touched it.",
         ticker="NVDA", kind="thesis_check")
     assert revisar_antes_de_publicar(item) == []
 
@@ -3142,10 +3145,10 @@ def test_caza_la_coletilla_aunque_cambie_la_frase_de_alrededor():
     """«it is a rounding error» salió tres veces, dos en posts seguidos."""
     from xcreator.generate import frases_repetidas
 
-    antes = ["The bear case on $CLSK is $13.22. That is not a bear case, "
+    antes = ["The floor I had in mind on $CLSK is $13.22. That is not a floor I had in mind, "
              "that is a rounding error."]
     assert frases_repetidas(
-        "The bear case on $DIS is $104.28. It is a rounding error.", antes)
+        "The floor I had in mind on $DIS is $104.28. It is a rounding error.", antes)
     assert frases_repetidas(
         "$VRT at 69x. Who is underwriting the +40%?",
         ["$ANET at 68x. Who is underwriting the +40%?"])
@@ -3155,10 +3158,10 @@ def test_el_vocabulario_del_oficio_no_es_una_coletilla():
     """Así se describen los datos: bloquearlo tumbaría casi todos los posts."""
     from xcreator.generate import frases_repetidas
 
-    assert frases_repetidas("The base case assumes +40% growth for $NVDA.",
-                            ["Our base case assumes +8% growth for $AXP."]) == []
+    assert frases_repetidas("$NVDA still needs 40% growth to make sense.",
+                            ["$AXP needs 8% growth and gets it."]) == []
     assert frases_repetidas("Solana moves with appetite for risk.",
-                            ["The bear case on $CLSK is a rounding error."]) == []
+                            ["$CLSK barely has room to fall."]) == []
 
 
 def test_el_borrador_que_repite_no_nace_programado(tmp_path):
