@@ -1619,6 +1619,56 @@ def recuperar(
                            brief, q, s, encolar=encolar)
 
 
+@app.command("salud")
+def salud(
+    avisar: bool = typer.Option(
+        False, help="Manda un aviso por Telegram si la cuenta se recuperó."),
+) -> None:
+    """¿Sigue la cuenta penalizada? Mide el alcance de tus últimos posts.
+
+    X no expone por API la etiqueta de manipulación de plataforma, así que
+    esto mira lo único observable: si las impresiones volvieron a niveles
+    normales. Es un indicio, no la etiqueta; la confirmación la da X en la
+    app.
+    """
+    from xcreator.config import load_settings
+    from xcreator.salud import impresiones_recientes, leer
+    from xcreator.xapi import ClienteX, XAPIError
+
+    s = load_settings()
+    try:
+        cliente = ClienteX(s.x_bearer_token or "", s.x_cache_path,
+                           presupuesto_diario=s.x_presupuesto_pasada)
+        impresiones = impresiones_recientes(cliente, s.x_handle or "")
+    except XAPIError as e:
+        typer.secho(str(e), fg="red", err=True)
+        raise typer.Exit(1)
+    lectura = leer(impresiones)
+    typer.echo(lectura.resumen())
+    typer.echo(f"  impresiones: {impresiones}")
+    typer.echo(f"  gasto de esta pasada: ${cliente.gastado:.3f}")
+    if not (avisar and lectura.recuperada):
+        return
+    # El aviso se manda UNA vez: el estado vive en el mismo archivo que usa
+    # Telegram, así que un cron diario no repite el mensaje cada mañana.
+    from xcreator.telegram import Estado, TelegramError, bot_desde
+
+    estado = Estado(s.estado_telegram_path)
+    st = estado.load()
+    if st.get("aviso_recuperada"):
+        return
+    try:
+        bot_desde(s).send(
+            f"La cuenta parece haber recuperado el alcance: mediana de "
+            f"{lectura.mediana:.0f} impresiones en los últimos "
+            f"{lectura.posts} posts. Comprueba en la app si X quitó la "
+            f"etiqueta y dime para encender la generación.")
+        st["aviso_recuperada"] = True
+        estado.save(st)
+    except TelegramError as e:
+        typer.secho(str(e), fg="red", err=True)
+
+
 @app.command("gasto")
 def gasto_cmd(dias: int = typer.Option(7, help="Cuántos días mostrar.")) -> None:
     """Lo que ha costado el modelo que redacta, día a día."""

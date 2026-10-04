@@ -4435,3 +4435,44 @@ def test_un_post_en_espanol_no_se_marca_como_idioma_incorrecto():
     assert not any("no está en" in p for p in revisar_antes_de_publicar(item))
     item.idioma = "en"
     assert any("no está en inglés" in p for p in revisar_antes_de_publicar(item))
+
+
+# --- Salud de la cuenta tras la etiqueta ---------------------------------------
+
+def test_la_cuenta_penalizada_se_nota_en_la_mediana():
+    from xcreator.salud import leer
+
+    # Lo real del 2026-10-03: 0 y 1 impresiones por post.
+    plana = leer([0, 1, 1, 0, 2, 1])
+    assert plana.penalizada and not plana.recuperada
+    assert "SIGUE penalizada" in plana.resumen()
+
+    # Lo normal de la cuenta antes de la etiqueta.
+    normal = leer([52, 38, 24, 61, 35])
+    assert normal.recuperada and not normal.penalizada
+    assert "RECUPERADA" in normal.resumen()
+
+
+def test_con_pocos_posts_no_se_opina():
+    from xcreator.salud import leer
+
+    corta = leer([40, 50])
+    assert not corta.recuperada and not corta.penalizada
+    assert "hacen falta" in corta.resumen()
+
+
+def test_los_replies_no_cuentan_para_la_salud():
+    """Un reply mide el alcance de la conversación ajena, no el tuyo."""
+    from xcreator.salud import impresiones_recientes
+
+    class _Post:
+        def __init__(self, texto, imp):
+            self.texto, self.metricas = texto, {"impression_count": imp}
+
+    class _Cliente:
+        def posts_recientes(self, handle, limite=10):
+            return [_Post("@zerohedge not how I read it", 900),
+                    _Post("RT @alguien: algo", 500),
+                    _Post("Broadcom has gone nowhere.", 40)]
+
+    assert impresiones_recientes(_Cliente(), "@anegronro") == [40]

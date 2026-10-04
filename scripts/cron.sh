@@ -136,6 +136,14 @@ case "${1:-}" in
     registrar "recuperar: $(echo "$salida" | grep -v '^live_price' | tail -4)"
     exit $codigo
     ;;
+  salud)
+    # ¿Sigue la cuenta penalizada? Mide el alcance de los últimos posts y
+    # avisa por Telegram cuando vuelva a niveles normales. Es lo único
+    # observable: X no expone por API la etiqueta de manipulación.
+    salida=$("$XC" salud --avisar 2>&1); codigo=$?
+    registrar "salud: $(echo "$salida" | tail -3)"
+    exit $codigo
+    ;;
   ciencia)
     # Ciencia y tecnología desde fuentes reales (NASA, Nature, ScienceDaily,
     # Ars Technica). Es el nicho con más interacción de X y el más cercano al
