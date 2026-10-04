@@ -1235,6 +1235,13 @@ def publicar(
     from xcreator.xauth import AlmacenTokens, AuthError, token_vigente
 
     q, s = _queue()
+    if not en_seco and not s.publicar_automatico:
+        typer.secho(
+            "Publicar por API está APAGADO desde el 2026-10-03 (X etiquetó la "
+            "cuenta por manipulación de plataforma). El agente redacta y manda "
+            "a Telegram; tú pegas en X. Para reactivarlo: PUBLICAR_AUTOMATICO="
+            "true en API/.env, y sabiendo lo que cuesta.", fg="red", err=True)
+        raise typer.Exit(1)
     items = [q.get(item_id)] if item_id else q.listos_para_publicar()
     items = [i for i in items if i is not None]
     if not items:

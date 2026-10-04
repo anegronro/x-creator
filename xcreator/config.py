@@ -93,6 +93,13 @@ class Settings:
     # busca el borrador en SU cola: aprobar en el teléfono un borrador de la
     # otra da "ese borrador ya no existe". El VPS es el dueño porque corre
     # 24/7; la Mac queda para desarrollar.
+    # Publicar por API: APAGADO desde el 2026-10-03. X etiquetó la cuenta por
+    # manipulación de plataforma, y el patrón que lo disparó fue publicar
+    # automáticamente cada media hora. Ahora el agente redacta y manda a
+    # Telegram; Angel pega a mano. Encenderlo otra vez es una decisión suya,
+    # no un descuido: por eso el valor por defecto es False y `publicar`
+    # se niega a salir del modo en seco sin él.
+    publicar_automatico: bool = False
     telegram_activo: bool = True
     # Bot PROPIO. Sin fallback a ningún TELEGRAM_BOT_TOKEN genérico: un
     # fallback silencioso mandaría estos posts al chat de otro agente.
@@ -176,6 +183,8 @@ def load_settings(env_file: Path | None = None) -> Settings:
         replies_opinion_por_dia=int(get("REPLIES_OPINION_POR_DIA") or 2),
         horas_frescura_reply=float(get("HORAS_FRESCURA_REPLY") or 3),
         regulacion_respaldo_x=(get("REGULACION_RESPALDO_X") or "false").lower()
+        in ("true", "1", "si", "sí", "yes"),
+        publicar_automatico=(get("PUBLICAR_AUTOMATICO") or "false").lower()
         in ("true", "1", "si", "sí", "yes"),
         telegram_activo=(get("TELEGRAM_ACTIVO") or "true").lower()
         not in ("false", "0", "no"),

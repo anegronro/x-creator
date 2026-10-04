@@ -353,10 +353,11 @@ class FakeBot:
         self._updates = updates or []
         self._next_id = 100
 
-    def send(self, texto, *, botones=None, force_reply=False):
+    def send(self, texto, *, botones=None, force_reply=False, html=False):
         self._next_id += 1
         self.enviados.append({"texto": texto, "botones": botones,
-                              "force_reply": force_reply, "id": self._next_id})
+                              "force_reply": force_reply, "html": html,
+                              "id": self._next_id})
         return {"message_id": self._next_id}
 
     def answer_callback(self, callback_id, texto=""):
@@ -2975,8 +2976,12 @@ def test_las_notas_quedan_FUERA_del_bloque(tmp_path):
     assert "caracteres" in txt.split("</pre>")[1], "las notas van después"
 
 
-def test_el_post_propio_sigue_yendo_como_siempre(tmp_path):
-    """El cambio es solo para los replies: un post propio lleva su ficha."""
+def test_el_post_propio_tambien_se_copia_y_se_pega(tmp_path):
+    """Desde el 2026-10-03 nada sale por API: todo va en bloque copiable.
+
+    X etiquetó la cuenta por manipulación de plataforma y el patrón que lo
+    disparó fue publicar solo, cada media hora. Un post que pega una persona
+    no deja esa huella."""
     from xcreator.store import Queue
     from xcreator.telegram import enviar_pendientes
 
@@ -2991,8 +2996,14 @@ def test_el_post_propio_sigue_yendo_como_siempre(tmp_path):
     bot = _Bot()
     enviar_pendientes(q, bot)
     texto, html = bot.enviados[0]
-    assert not html and "<pre>" not in texto
-    assert "SALE SOLO" in texto
+    assert html and "<pre>" in texto
+    assert "lo publicas tú" in texto
+
+
+def test_publicar_por_api_esta_apagado_por_defecto():
+    from xcreator.config import Settings
+
+    assert Settings().publicar_automatico is False
 
 
 # --- macro en los replies: el dato que teníamos y no usábamos --------------

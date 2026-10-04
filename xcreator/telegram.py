@@ -84,7 +84,8 @@ class Bot:
         import json as _json
 
         datos: dict[str, Any] = {"chat_id": self.chat_id,
-                                 "caption": texto[:1024]}
+                                 "caption": texto[:1024],
+                                 "parse_mode": "HTML"}
         if botones:
             datos["reply_markup"] = _json.dumps({"inline_keyboard": botones})
         try:
@@ -269,14 +270,27 @@ def mensaje_para_copiar(item) -> str:
     teléfonos, así que no se puede depender de ellos. Un bloque de código sí
     lleva botón de copiar nativo en Telegram, en iOS y en Android.
     """
-    es_cita = getattr(item, "kind", "") == "cita"
+    kind = getattr(item, "kind", "")
+    es_cita = kind == "cita"
+    es_reply = kind == "reply"
+    if es_cita:
+        cabecera = f"<b>CITAR a {_escapar(item.responde_a)}</b>  (sale en tu perfil)"
+    elif es_reply:
+        cabecera = f"<b>Responder a {_escapar(item.responde_a)}</b>"
+    else:
+        # Desde el 2026-10-03 los posts propios tampoco salen por API: los
+        # pega Angel. Un post publicado por una persona no deja huella de
+        # automatización, que es justo lo que hay que quitar de la cuenta.
+        cabecera = "<b>Post para tu perfil</b>  (lo publicas tú)"
     partes = [
-        (f"<b>CITAR a {_escapar(item.responde_a)}</b>  (sale en tu perfil)"
-         if es_cita else f"<b>Responder a {_escapar(item.responde_a)}</b>"),
+        cabecera,
         "",
         "1. Toca el bloque para copiarlo:",
         f"<pre>{_escapar(item.texto_final)}</pre>",
     ]
+    if not (es_cita or es_reply):
+        partes += ["", "2. Abre X y pégalo. Si lleva gráfico, la imagen va "
+                       "arriba en este mismo mensaje."]
     if item.url_origen:
         partes += [
             "",
@@ -376,26 +390,18 @@ def enviar_pendientes(queue, bot: Bot, *, limite: int = 10) -> int:
     proyeccion = queue.proyeccion_de_salida()
     n = 0
     for item in sin_enviar[:limite]:
-        if item.kind in ("reply", "cita"):
-            # X no deja publicar replies por API desde feb 2026, así que esto
-            # se copia y se pega a mano. Un bloque <pre> lleva botón de copiar
-            # nativo en iOS y Android; el texto suelto obliga a seleccionar a
-            # dedo entre las notas. La función existía y no la llamaba nadie.
-            res = bot.send(mensaje_para_copiar(item), html=True,
-                           botones=_botones(item.id, item))
-            queue.update(item.id, metricas={
-                **item.metricas, "telegram_message_id": res.get("message_id")})
-            n += 1
-            continue
+        # Desde el 2026-10-03 NADA sale por API: replies, citas y posts
+        # propios se copian y se pegan a mano. Un bloque <pre> lleva botón de
+        # copiar nativo en iOS y Android; el texto suelto obliga a
+        # seleccionar a dedo entre las notas.
+        texto = mensaje_para_copiar(item)
         imagen = Path(item.imagen) if item.imagen else None
         if imagen is not None and imagen.exists():
-            # Con gráfico se manda la foto: aprobar una imagen sin verla es
-            # aprobar a ciegas.
-            res = bot.send_photo(imagen, _texto_item(item, proyeccion.get(item.id)),
-                                 botones=_botones(item.id, item))
+            # Con gráfico va la foto: hay que ver la imagen para decidir, y
+            # además se guarda para adjuntarla al pegar.
+            res = bot.send_photo(imagen, texto, botones=_botones(item.id, item))
         else:
-            res = bot.send(_texto_item(item, proyeccion.get(item.id)),
-                           botones=_botones(item.id, item))
+            res = bot.send(texto, html=True, botones=_botones(item.id, item))
         queue.update(item.id, metricas={**item.metricas,
                                         "telegram_message_id": res.get("message_id")})
         n += 1
