@@ -212,6 +212,27 @@ def _palabras(texto: str) -> list[str]:
     return re.findall(r"[a-záéíóúñü]+", texto.lower())
 
 
+def idioma_correcto(texto: str, idioma: str = "en") -> bool:
+    """True si el texto está en el idioma que tocaba.
+
+    La cuenta publica sobre todo en inglés, pero desde el 2026-10-03 mezcla
+    español: Angel es de Puerto Rico y escribir siempre en un idioma que no
+    es el suyo es parte de lo que hacía sonar la cuenta a plantilla. El
+    idioma lo decide el brief; aquí solo se comprueba que se respetó.
+    """
+    return es_espanol(texto) if idioma == "es" else es_ingles(texto)
+
+
+def es_espanol(texto: str) -> bool:
+    """True si el texto parece español. Espejo de `es_ingles`."""
+    palabras = set(_palabras(texto))
+    es = len(palabras & _ES)
+    en = len(palabras & _EN)
+    if any(c in texto for c in _ACENTOS):
+        es += 1
+    return es > en
+
+
 def es_ingles(texto: str) -> bool:
     """True si el texto parece inglés. El contenido SIEMPRE va en inglés.
 
@@ -539,6 +560,7 @@ class Draft:
     sin_atribucion: bool = False
     # Menciones a la esposa o a los hijos: nunca salen.
     familia_privada: list[str] = field(default_factory=list)
+    idioma: str = "en"
 
     @property
     def valido(self) -> bool:
@@ -824,7 +846,11 @@ def draft_posts(
         f"REGLAS DE ESTILO DERIVADAS DE DATOS:\n{_style_rules(lecciones or [])}\n\n"
         f"Escribe {n} variantes distintas entre sí (distinto ángulo, no la "
         f"misma idea reformulada). Máximo {MAX_CHARS} caracteres por post. "
-        f"Inglés. Sin links. Sin hashtags."
+        + ("ESCRÍBELO EN ESPAÑOL, el español de Puerto Rico: natural y "
+           "hablado, nada de traducción literal del inglés. Los cashtags y "
+           "los nombres propios se quedan igual ($NVDA, the Fed). "
+           if getattr(brief, "idioma", "en") == "es" else "Inglés. ")
+        + "Sin links. Sin hashtags."
     )
 
     resp = client.messages.parse(
@@ -879,6 +905,7 @@ def draft_posts(
                 ticker=brief.ticker,
                 kind=brief.kind,
                 motivo=getattr(brief, "motivo", ""),
+                idioma=getattr(brief, "idioma", "en"),
                 atribucion=list(getattr(brief, "atribucion", ()) or ()),
                 familia_privada=menciona_familia_privada("\n".join(piezas)),
                 sin_atribucion=falta_atribucion(
@@ -887,7 +914,8 @@ def draft_posts(
                 numeros_no_justificados=validate_numbers("\n".join(piezas), allowed),
                 exceso_caracteres=exceso,
                 truncado=respuesta_truncada or _parece_cortado(v.text),
-                idioma_incorrecto=not es_ingles(v.text),
+                idioma_incorrecto=not idioma_correcto(
+                    v.text, getattr(brief, "idioma", "en")),
                 # Se mira el hilo completo: basta con que aparezcan una vez.
                 tickers_faltantes=falta_ticker("\n".join(piezas), brief.ticker),
                 sujeto_ausente=falta_sujeto("\n".join(piezas),

@@ -85,6 +85,10 @@ class Brief:
     # credibilidad de la cuenta es que cualquiera pueda ir a la fuente, y sin
     # link (13x de costo) la única forma es nombrarla.
     atribucion: tuple[str, ...] = ()
+    # "en" o "es". La cuenta mezcla desde el 2026-10-03: Angel es de Puerto
+    # Rico y publicar siempre en inglés era parte de lo que la hacía sonar a
+    # plantilla. Lo decide `idiomas.elegir`, no el modelo.
+    idioma: str = "en"
 
     @property
     def brief_id(self) -> str:

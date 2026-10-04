@@ -36,6 +36,13 @@ FUENTES = (
      "@ScienceDaily", "research summaries across fields"),
     ("Ars Technica", "https://feeds.arstechnica.com/arstechnica/technology-lab",
      "@arstechnica", "technology and computing"),
+    # Angel pidió el 2026-10-03 cubrir SpaceX. spacex.com no publica RSS
+    # (su /rss devuelve 200 sin entradas), así que sus lanzamientos entran
+    # por quien los reporta a diario, y se atribuye a ese medio, no a SpaceX.
+    ("Spaceflight Now", "https://spaceflightnow.com/feed/", "@SpaceflightNow",
+     "launches, including SpaceX"),
+    ("ESA", "https://www.esa.int/rssfeed/Our_Activities/Space_News", "@esa",
+     "European space missions"),
 )
 
 # Pasadas 48 horas, la conversación ya ocurrió. Es la misma ventana que usa

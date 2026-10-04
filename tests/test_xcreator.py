@@ -4385,3 +4385,50 @@ def test_un_borrador_que_los_nombra_no_es_valido():
     d = Draft(text="My kids saw me work", approach="x", reply_hook="y",
               familia_privada=["my kids"])
     assert not d.valido
+
+
+# --- Mezcla de idiomas ---------------------------------------------------------
+
+def test_el_espanol_sale_uno_de_cada_tres_sin_azar():
+    """Ni cinco seguidos en español ni una semana sin ninguno."""
+    from xcreator.idiomas import elegir
+
+    salida = []
+    for _ in range(9):
+        salida.append(elegir(salida))
+    assert salida.count("es") == 3 and salida.count("en") == 6
+    # Se reparte: dos en inglés y uno en español, sin rachas.
+    assert salida[:3] == ["en", "en", "es"]
+
+
+def test_los_replies_no_cuentan_para_la_proporcion(tmp_path):
+    from xcreator.idiomas import idiomas_de_hoy
+    from xcreator.store import Item
+
+    items = [
+        Item(id="1", creado="2026-10-03T12:00:00+00:00", estado="pendiente",
+             texto="a", kind="cripto", idioma="es"),
+        Item(id="2", creado="2026-10-03T13:00:00+00:00", estado="pendiente",
+             texto="b", kind="reply", idioma="en"),
+        Item(id="3", creado="2026-10-03T13:00:00+00:00", estado="rechazado",
+             texto="c", kind="macro", idioma="en"),
+        Item(id="4", creado="2026-10-02T13:00:00+00:00", estado="publicado",
+             texto="d", kind="macro", idioma="en"),
+    ]
+    assert idiomas_de_hoy(items, "2026-10-03") == ["es"]
+
+
+def test_un_post_en_espanol_no_se_marca_como_idioma_incorrecto():
+    from xcreator.generate import idioma_correcto
+    from xcreator.publicar import revisar_antes_de_publicar
+    from xcreator.store import Item
+
+    texto = "No veo cómo los múltiplos sobreviven con las tasas donde están."
+    assert idioma_correcto(texto, "es")
+    assert not idioma_correcto(texto, "en")
+
+    item = Item(id="x", creado="2026-10-03T12:00:00+00:00", estado="programado",
+                texto=texto, kind="macro", idioma="es")
+    assert not any("no está en" in p for p in revisar_antes_de_publicar(item))
+    item.idioma = "en"
+    assert any("no está en inglés" in p for p in revisar_antes_de_publicar(item))

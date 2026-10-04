@@ -25,7 +25,7 @@ import httpx
 from xcreator.generate import (
     MAX_CHARS, SIN_HISTORIAL, afirma_llamada_propia, cashtags_de_mas,
     cifras_mal_formateadas, falta_atribucion, menciona_familia_privada,
-    es_ingles, falta_sujeto, falta_ticker, lleva_raya, validate_numbers,
+    falta_sujeto, falta_ticker, idioma_correcto, lleva_raya, validate_numbers,
 )
 
 POST_URL = "https://api.x.com/2/tweets"
@@ -93,8 +93,9 @@ def revisar_antes_de_publicar(item, *, permitir_link: bool = False,
             problemas.append(f"pieza {i} vacía")
         if len(p) > MAX_CHARS:
             problemas.append(f"pieza {i} se pasa por {len(p) - MAX_CHARS} caracteres")
-        if not es_ingles(p):
-            problemas.append(f"pieza {i} no está en inglés")
+        if not idioma_correcto(p, getattr(item, "idioma", "en") or "en"):
+            idioma = "español" if getattr(item, "idioma", "en") == "es" else "inglés"
+            problemas.append(f"pieza {i} no está en {idioma}")
         # Un post que EMPIEZA por @ X lo trata como respuesta: solo lo ven
         # quienes siguen a las dos cuentas. Mencionar a @SECGov sí, pero
         # nunca como primera palabra.

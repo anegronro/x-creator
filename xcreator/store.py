@@ -85,6 +85,7 @@ class Item:
     # A quién hay que atribuir el hecho ("@SECGov"). La revisión de
     # publicación exige que el texto final lo nombre.
     atribucion: list[str] = field(default_factory=list)
+    idioma: str = "en"
     # Se llenan al decidir / publicar / cosechar.
     texto_editado: str = ""
     decidido: str = ""
@@ -187,6 +188,7 @@ class Queue:
             partidismo=list(getattr(draft, "partidismo", [])),
             fuente=getattr(draft, "fuente", ""),
             atribucion=list(getattr(draft, "atribucion", []) or []),
+            idioma=getattr(draft, "idioma", "en"),
         )
         items = self.load()
         items.append(item)

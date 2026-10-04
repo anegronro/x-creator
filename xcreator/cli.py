@@ -199,6 +199,7 @@ def redactar(
         from xcreator.idea import brief_idea, ticker_de_la_nota
 
         brief = brief_idea(idea, ticker_de_la_nota(idea))
+        _poner_idioma(brief, q)
         for d in draft_posts(brief, s, n=n, recientes=q.textos_recientes()):
             _mostrar_y_encolar(d, brief, q, s, encolar=False)
             if encolar:
@@ -277,6 +278,7 @@ def redactar(
                     "más genérico.", fg="yellow")
     typer.echo(f"Brief: {brief.brief_id} — {brief.angle}\n")
 
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, lecciones=lecciones, n=n)
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
@@ -285,6 +287,19 @@ def redactar(
 
     for d in drafts:
         _mostrar_y_encolar(d, brief, q, s, encolar=encolar)
+
+
+def _poner_idioma(brief, q) -> None:
+    """Decide el idioma de este post mirando lo que ya salió hoy.
+
+    Se llama justo antes de redactar, sobre el brief, para que la regla valga
+    para TODOS los tipos (empresa, macro, cripto, ciencia, regulación) sin
+    repetir la cuenta en cada sitio.
+    """
+    from xcreator.idiomas import elegir, idiomas_de_hoy
+    from xcreator.store import _hoy_utc
+
+    brief.idioma = elegir(idiomas_de_hoy(q.load(), _hoy_utc()))
 
 
 def _mostrar_y_encolar(d, brief, q, s, *, encolar: bool) -> None:
@@ -352,6 +367,7 @@ def _redactar_planes(planes, q, s, *, lecciones, encolar: bool) -> None:
             typer.echo(f"   {tema.razones[0]}")
         # Se recalcula en cada vuelta: el borrador de la empresa anterior de
         # ESTA tanda ya está en la cola y tampoco hay que copiarlo.
+        _poner_idioma(brief, q)
         drafts = draft_posts(brief, s, lecciones=lecciones, n=2,
                              recientes=q.textos_recientes())
         if not drafts:
@@ -434,6 +450,7 @@ def _redactar_cripto(q, s, *, n: int, encolar: bool) -> None:
     # Una sola variante a la cola. Las otras son repuesto, no posts extra:
     # encolarlas todas eran n posts seguidos del mismo activo, el mismo fallo
     # que ya costó tres posts de la misma serie macro en un día.
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=n, recientes=q.textos_recientes())
     if drafts:
         _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
@@ -480,6 +497,7 @@ def _redactar_y_encolar_regulacion(q, s, brief, *, encolar: bool) -> None:
     from xcreator.generate import draft_posts
 
     # Dos variantes y se queda una: la segunda es repuesto de la primera.
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
@@ -559,6 +577,7 @@ def _redactar_ciencia(q, s, *, encolar: bool) -> None:
     typer.echo(f"Titular ({horas}, {t.fuente} {t.handle}): {t.titulo[:110]}\n")
     brief = brief_ciencia(t)
     brief.fuente = t.url
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
@@ -581,6 +600,7 @@ def _redactar_personal(q, s, *, n: int, encolar: bool) -> None:
     brief = brief_personal(semilla)
     typer.echo(f"Opinión: {semilla.clave} — {semilla.tema}")
     typer.echo(f"Ángulo: {brief.angle}\n")
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=max(n, 2), recientes=q.textos_recientes())
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
@@ -610,6 +630,7 @@ def _redactar_bitacora(q, s, *, encolar: bool) -> None:
                     "Una bitácora vacía es relleno.", fg="yellow")
         return
     typer.echo(f"Ángulo: {brief.angle}\n")
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) "
@@ -640,6 +661,7 @@ def _redactar_marcador(q, s, *, encolar: bool) -> None:
     brief._marcador = (abajo, arriba, len(todas))
     typer.echo(f"Marcador: {len(todas)} con precio y rango, "
                f"{len(abajo)} por debajo y {len(arriba)} por encima.\n")
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
     if not drafts:
         typer.secho("Sin borradores: falta la clave del modelo (XAI_API_KEY) o el modelo no respondió.",
@@ -1381,6 +1403,7 @@ def _redactar_macro(q, s, *, n: int, encolar: bool) -> None:
 
     # Una sola a la cola: las demás son repuesto. Encolarlas todas puso tres
     # posts del mismo dato macro en un día.
+    _poner_idioma(brief, q)
     drafts = draft_posts(brief, s, n=n, recientes=q.textos_recientes())
     if drafts:
         _mostrar_y_encolar(next((d for d in drafts if d.valido), drafts[0]),
@@ -1587,6 +1610,7 @@ def recuperar(
                 typer.secho(f"  sin el post padre ({e}); se sigue sin él",
                             fg="yellow")
         brief = brief_desde_reply(reply, padre)
+        _poner_idioma(brief, q)
         drafts = draft_posts(brief, s, n=2, recientes=q.textos_recientes())
         if not drafts:
             typer.secho("Sin borradores: el modelo no respondió.", fg="red", err=True)
