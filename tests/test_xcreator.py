@@ -2329,7 +2329,9 @@ def test_auto_se_queda_con_la_variante_valida(tmp_path, monkeypatch):
                      lecciones=[], encolar=True)
     items = q.load()
     assert len(items) == 1
-    assert items[0].estado == "programado"
+    # Con la publicación por API apagada (lo normal desde el 2026-10-03) un
+    # borrador válido nace PENDIENTE: nada sale solo, lo pega Angel.
+    assert items[0].estado == "pendiente"
     assert "$AAA" in items[0].texto_final
 
 

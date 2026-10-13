@@ -335,7 +335,11 @@ def _mostrar_y_encolar(d, brief, q, s, *, encolar: bool) -> None:
         # Nace PROGRAMADO: sale solo pasada la ventana de veto. Lo que antes
         # hacía falta para publicar (aprobar) ahora hace falta para parar, que
         # es lo que Angel pidió.
-        item = q.add(d, estado="programado" if d.valido else "pendiente")
+        # Con la publicación por API apagada, "programado" sería mentira: no
+        # sale solo porque no sale nada solo. Queda pendiente, que es lo que
+        # de verdad hace falta, tu copiar y pegar.
+        auto = d.valido and getattr(s, "publicar_automatico", False)
+        item = q.add(d, estado="programado" if auto else "pendiente")
         ruta = _grafico_para(brief, s, item.id)
         if ruta:
             q.update(item.id, imagen=str(ruta))
