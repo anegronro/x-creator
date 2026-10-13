@@ -89,6 +89,9 @@ class Brief:
     # Rico y publicar siempre en inglés era parte de lo que la hacía sonar a
     # plantilla. Lo decide `idiomas.elegir`, no el modelo.
     idioma: str = "en"
+    # El texto del que nace el post (la nota de Angel, el titular). Sirve
+    # para comprobar en código que el post dice DE QUÉ habla.
+    origen: str = ""
 
     @property
     def brief_id(self) -> str:

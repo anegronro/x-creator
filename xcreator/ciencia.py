@@ -77,6 +77,24 @@ class Titular:
         return self.url.rstrip("/").split("/")[-1]
 
 
+# Lo que NO es una noticia aunque venga en el mismo feed. El 2026-10-13 un
+# boletín técnico de la NASA sobre amortiguación de estructuras ("Complex
+# Modes in Lightly Damped structures") pasó el filtro y salió un post que no
+# entendía nadie. Un boletín de ingeniería interna, una foto astronómica del
+# día o un aviso de agenda no son noticia para esta cuenta.
+_NO_ES_NOTICIA = (
+    "/nesc/", "/tb-", "apod", "image-article", "/calendar", "/events",
+    "media advisory", "media accreditation", "flyover", "watch party",
+    "photo release", "image of the day",
+)
+
+
+def es_noticia(url: str, titulo: str = "") -> bool:
+    """False si es un boletín interno, una foto del día o un aviso de agenda."""
+    texto = f"{url} {titulo}".lower()
+    return not any(p in texto for p in _NO_ES_NOTICIA)
+
+
 def es_relevante(texto: str) -> bool:
     """True si el titular toca algo que le interesa a esta audiencia."""
     t = f" {(texto or '').lower()} "
@@ -112,6 +130,7 @@ def elegir(titulares: list[Titular], usados: set[str]) -> Titular | None:
     """El titular relevante más fresco que no se haya usado ya."""
     buenos = [t for t in titulares
               if t.clave not in usados
+              and es_noticia(t.url, t.titulo)
               and es_relevante(f"{t.titulo} {t.resumen}")
               and (t.horas is None or t.horas <= HORAS_MAX)]
     buenos.sort(key=lambda t: t.horas if t.horas is not None else 999)
@@ -129,6 +148,7 @@ def brief_ciencia(t: Titular) -> Brief:
     return Brief(
         kind="ciencia",
         ticker="",
+        origen=f"{t.titulo} {t.resumen}",
         sujeto=(),
         atribucion=(t.handle,),
         angulo="personal",   # fuera del Cerebro: aquí no hay empresa que analizar
@@ -142,10 +162,17 @@ def brief_ciencia(t: Titular) -> Brief:
             "NO afirmes nada que el titular no diga. No sabes qué más "
             "contiene el estudio ni qué pasará después. Las únicas cifras "
             "permitidas son las que aparecen arriba.",
-            "El valor del post es el PUENTE: qué significa esto para alguien "
-            "que invierte o que construye. Qué se abarata, qué se acelera, "
-            "qué deja de ser un cuello de botella. Ese puente es tuyo y es "
-            "opinión: no lo presentes como parte de la noticia.",
+            "PRIMERO, que se entienda. Quien lee no es ingeniero: si no "
+            "puedes contar la noticia en una frase que entienda cualquiera, "
+            "este no es tu post. Nada de jerga técnica que haya que buscar "
+            "('modal coupling', 'lightly damped'): si la noticia solo existe "
+            "en esos términos, decláralo inservible escribiendo un post que "
+            "no la use.",
+            "DESPUÉS, el puente: qué significa para alguien que invierte o "
+            "que construye. Qué se abarata, qué se acelera, qué deja de ser "
+            "un cuello de botella. Ese puente es tuyo y es opinión. Si no "
+            "hay puente honesto, mejor hablar solo de por qué te parece "
+            "importante; forzarlo es lo que produce frases sin sentido.",
             "EN POSITIVO, que es como escribe esta cuenta: lo que esto "
             "habilita, no lo que amenaza. Sin catastrofismo y sin hype "
             "hueco tampoco.",

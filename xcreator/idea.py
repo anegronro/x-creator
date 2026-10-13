@@ -40,6 +40,7 @@ def brief_idea(nota: str, ticker: str = "") -> Brief:
     return Brief(
         kind="idea",
         ticker=ticker,
+        origen=limpia,
         # `personal` no es un ángulo del Cerebro, y eso es deliberado: así no
         # se carga la metodología del analista, que es justo lo que vuelve
         # formales estos posts.
@@ -63,8 +64,14 @@ def brief_idea(nota: str, ticker: str = "") -> Brief:
             "hashtags.",
             "NUNCA menciones a la esposa ni a los hijos de Angel, aunque "
             "su nota los nombre: en ese caso escribe la idea sin ellos.",
-            "Que se entienda sin contexto: quien lo lea no vio la nota ni "
-            "sabe de qué hablabas antes.",
+            "QUE SE ENTIENDA SOLO, y esto es lo más importante: quien lo "
+            "lea no vio tu nota, no sabe de qué hablabas antes y no tiene "
+            "por qué adivinar. Si tu nota dice \"lo voy a quitar\", el post "
+            "tiene que decir QUÉ se quita. Un post que empieza por \"taking "
+            "it down\" sin decir el qué no es un post, es media conversación.",
+            "Nombra el sujeto con todas sus letras aunque la nota lo dé por "
+            "sabido: la empresa, el activo, el dato, la idea de la que "
+            "hablas.",
         ],
         as_of=date.today().isoformat(),
     )

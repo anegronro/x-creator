@@ -477,6 +477,41 @@ _JERGA = (
 )
 
 
+# Palabras que no identifican nada: si el post solo comparte estas con la
+# nota, no dice de qué habla.
+_VACIAS = {
+    "the", "a", "an", "and", "or", "but", "if", "is", "are", "was", "were",
+    "be", "been", "it", "its", "this", "that", "these", "those", "to", "of",
+    "in", "on", "for", "with", "at", "by", "from", "as", "not", "no", "yes",
+    "i", "my", "me", "we", "our", "you", "your", "they", "them", "do", "does",
+    "did", "have", "has", "had", "will", "would", "can", "could", "should",
+    "there", "here", "what", "when", "where", "how", "why", "than", "then",
+    "so", "just", "still", "about", "out", "up", "down", "now", "like",
+}
+
+
+def comparte_sujeto(texto: str, origen: str, minimo: int = 1) -> bool:
+    """True si el post nombra algo concreto de su origen.
+
+    Un post que sale de una nota de Angel tiene que decir DE QUÉ habla. El
+    2026-10-12 salió "Taking it down. Already doing it." y no se entendía
+    nada: era media conversación. Se comprueba que al menos `minimo`
+    palabras con contenido del origen aparezcan en el post.
+    """
+    def utiles(t: str) -> set[str]:
+        # Cuatro letras o más: la nota suele venir en español y el post sale
+        # en inglés, así que lo único que viaja seguro son los nombres
+        # propios y los términos técnicos ("stablecoins", "Nvidia", "$NVDA").
+        # Pedir dos coincidencias marcaba como malos los posts buenos.
+        return {p for p in re.findall(r"[a-záéíóúñü$][\w$'-]{3,}", (t or "").lower())
+                if p not in _VACIAS}
+
+    del_origen = utiles(origen)
+    if len(del_origen) < minimo:
+        return True      # la nota no da ni para exigir: no se castiga el post
+    return len(utiles(texto) & del_origen) >= minimo
+
+
 def jerga_de_modelo(texto: str) -> list[str]:
     """Las frases que delatan que esto lo escribió un sistema. Vacío = limpio."""
     t = " ".join((texto or "").lower().split())
@@ -595,6 +630,8 @@ class Draft:
     # Menciones a la esposa o a los hijos: nunca salen.
     familia_privada: list[str] = field(default_factory=list)
     idioma: str = "en"
+    # True si el post no nombra nada de aquello de lo que salió.
+    sin_sujeto_del_origen: bool = False
     # Frases de informe que delatan a la máquina ("per FMP", "base case").
     jerga: list[str] = field(default_factory=list)
 
@@ -615,6 +652,7 @@ class Draft:
             and not self.sin_atribucion
             and not self.familia_privada
             and not self.jerga
+            and not self.sin_sujeto_del_origen
         )
 
     @property
@@ -944,6 +982,8 @@ def draft_posts(
                 atribucion=list(getattr(brief, "atribucion", ()) or ()),
                 familia_privada=menciona_familia_privada("\n".join(piezas)),
                 jerga=jerga_de_modelo("\n".join(piezas)),
+                sin_sujeto_del_origen=not comparte_sujeto(
+                    "\n".join(piezas), getattr(brief, "origen", "")),
                 sin_atribucion=falta_atribucion(
                     "\n".join(piezas), getattr(brief, "atribucion", ())),
                 model=model or MODEL,

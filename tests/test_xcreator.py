@@ -4478,3 +4478,35 @@ def test_los_replies_no_cuentan_para_la_salud():
                     _Post("Broadcom has gone nowhere.", 40)]
 
     assert impresiones_recientes(_Cliente(), "@anegronro") == [40]
+
+
+# --- el post tiene que decir de qué habla --------------------------------------
+
+def test_un_post_que_no_nombra_su_asunto_no_es_valido():
+    """"Taking it down. Already doing it." salió el 2026-10-12 y no se
+    entendía nada: era media conversación."""
+    from xcreator.generate import comparte_sujeto
+
+    nota = "voy a quitar el post de Nvidia porque ya no pienso eso"
+    assert not comparte_sujeto("Taking it down. Already doing it.", nota)
+    assert comparte_sujeto("I am pulling my Nvidia post.", nota)
+    # La nota viene en español y el post sale en inglés: lo que viaja son los
+    # nombres propios y los términos, no la gramática.
+    assert comparte_sujeto("Stablecoins smell like commercial paper.",
+                           "lo de los stablecoins me huele al papel comercial")
+    # Sin origen que exigir, no se castiga nada.
+    assert comparte_sujeto("cualquier cosa", "")
+
+
+def test_un_boletin_tecnico_no_es_noticia_de_ciencia():
+    """El boletín de la NASA sobre 'lightly damped structures' produjo un
+    post que no entendía nadie."""
+    from xcreator.ciencia import es_noticia
+
+    assert not es_noticia(
+        "https://www.nasa.gov/centers-and-facilities/nesc/tb-26-08-complex-modes",
+        "Complex Modes in Lightly Damped Structures")
+    assert not es_noticia("https://science.nasa.gov/image-article/apod-2026", "APOD")
+    assert es_noticia(
+        "https://www.nasa.gov/news-release/nasa-science-cargo-launch",
+        "NASA Science Cargo Launches on 35th SpaceX Resupply")
